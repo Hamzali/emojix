@@ -16,7 +16,7 @@ type UserRepository interface {
 
 type GameRepository interface {
 	FindByID(ctx context.Context, id string) (model.Game, error)
-	Create(ctx context.Context) (model.Game, error)
+	Create(ctx context.Context, word string, hint string) (model.Game, error)
 
 	AddPlayer(ctx context.Context, gameID string, userID string) error
 	GetPlayers(ctx context.Context, gameID string) ([]model.Player, error)

@@ -1,5 +1,7 @@
 CREATE TABLE IF NOT EXISTS games (
 	id TEXT PRIMARY KEY,
+	word TEXT NOT NULL,
+	hint TEXT NOT NULL,
 	created_at INT NOT NULL,
 	updated_at INT NOT NULL
 );
@@ -21,3 +23,9 @@ CREATE TABLE IF NOT EXISTS messages (
 	FOREIGN KEY (player_id) REFERENCES users(id)
 );
 
+CREATE TABLE IF NOT EXISTS users (
+	id TEXT PRIMARY KEY,
+	nickname TEXT NOT NULL,
+	created_at INT NOT NULL,
+	updated_at INT NOT NULL
+)

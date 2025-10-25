@@ -12,7 +12,7 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-const baseDir = "./migrations"
+const baseDir = "./database/migrations"
 
 type Migration struct {
 	Name      string
@@ -34,6 +34,8 @@ func NewMigrator() (*Migrator, error) {
 	if err != nil {
 		return nil, err
 	}
+
+	log.Printf("connected to %s database", dbname)
 
 	migrator := Migrator{db: db}
 	err = migrator.init()
@@ -141,11 +143,14 @@ func (m *Migrator) isMigrationApplied(name string) bool {
 func (m *Migrator) upCmd() error {
 
 	for _, mf := range m.migrationFiles {
+		log.Printf("applying migration %s", mf)
 		if m.isMigrationApplied(mf) {
+			log.Printf("migration %s is already applied", mf)
 			continue
 		}
 		err := m.applyMigration(mf)
 		if err != nil {
+			log.Printf("failed to apply %s\n", mf)
 			return err
 		}
 	}

@@ -20,6 +20,38 @@ messages - text content typed by users with timestamps
 
 events - correct guesses, joins, leaves,
 
+
+# AI generated guess items
+
+It is really time consuming to build a turn system at the first stage because it requires timers, realtime chat, UX elements and input validations for emoji interactions. In order to create the first playable version users will not decide on any items to guess or emojis to represents. There will be a list of movies with emoji representation and N number of hints with revealing levels. This list can be generated with AI and also can be extended and corrected by hand. There will be no turn mechanism but there will be timer for given hints. Game logic will be as follows.
+
+
+## room logic
+MIN_PLAYER - number of people required to play the game
+MAX_PLAYER - number of maximum player count
+
+If there is at least MIN_PLAYER number of players start a COUNTDOWN and start the game if COUNTDOWN finishes
+- what if a user leaves before COUNTDOWN is not completed; reset the COUNTDOWN and wait for MIN_PLAYER number of player
+
+If there are MAX_PLAYER number of people then just start the game
+
+## game session
+- There will be a list of movies to go through
+- Game starts with the first item and go thorughs all items in the movie list spending X amount of time
+- If everybody guesses correct skips to next item without waiting for timer to expire.
+- At end of the list every player's score is calculated and build a scoreboard.
+
+## round details
+
+
+## score calcuation
+parameters
+- TIME_LEFT: 1 - 0,how much percentage of time left since round start
+- ORDER: 0 - N, order which the user guessed first, second or Nth
+- HINT_REVEALED: H - 0, how many hints left
+
+
+
 # Strategy
 
 First implement related to game room user flows without other in game actions like messaging, score etc.
@@ -74,4 +106,3 @@ GUESSER
 
 TELLER
 	[ ] as a player, I would like to send hints with emojis
-

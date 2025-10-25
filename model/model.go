@@ -5,6 +5,9 @@ import "time"
 type Game struct {
 	ID string
 
+	Hint string
+	Word string
+
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }

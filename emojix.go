@@ -10,6 +10,7 @@ import (
 	"log"
 	mathRand "math/rand"
 	"net/http"
+	"regexp"
 	"strings"
 )
 
@@ -29,18 +30,19 @@ func NewEmojix() (Emojix, error) {
 		return nil, err
 	}
 	return &emojix{
-		templates: *template.Must(template.ParseGlob("templates/*.html")),
+		templates: *template.Must(template.ParseGlob("templates/*.gohtml")),
 		userRepo:  repository.NewUserRepository(db),
 		gameRepo:  repository.NewGameRepository(db),
 	}, nil
 }
 
 func (e *emojix) StartServer() {
-	http.HandleFunc("GET /", e.Index)
 	http.HandleFunc("POST /game/new", e.NewGame)
-	http.HandleFunc("GET /game/{id}", e.Game)
+	http.HandleFunc("GET /game/join", e.JoinGame)
 	http.HandleFunc("GET /game/{id}/join", e.JoinGame)
+	http.HandleFunc("GET /game/{id}", e.Game)
 	http.HandleFunc("POST /game/{id}/message", e.Message)
+	http.HandleFunc("GET /", e.Index)
 	log.Fatal(http.ListenAndServe(":9000", nil))
 }
 
@@ -56,7 +58,7 @@ func (e *emojix) renderTemplate(w http.ResponseWriter, name string, p interface{
 func (e *emojix) handleError(w http.ResponseWriter, err error, msg string) {
 	log.Printf("%s: %v\n", msg, err)
 	w.WriteHeader(http.StatusInternalServerError)
-	_ = e.renderTemplate(w, "error.html", nil)
+	_ = e.renderTemplate(w, "error.gohtml", nil)
 }
 
 type IndexPageData struct {
@@ -135,12 +137,7 @@ func (e *emojix) getNickname(w http.ResponseWriter, r *http.Request) string {
 	nicknameCookie, err := r.Cookie(nicknameCookieKey)
 
 	if err != nil {
-		err = nil
 		nickname := GenerateNickname()
-		if err != nil {
-			log.Printf("failed to generate session id err %v\n", err)
-			return ""
-		}
 		w.Header().Add("Set-Cookie", nicknameCookieKey+"="+nickname)
 		return nickname
 	}
@@ -149,7 +146,7 @@ func (e *emojix) getNickname(w http.ResponseWriter, r *http.Request) string {
 }
 
 func (e *emojix) Index(w http.ResponseWriter, r *http.Request) {
-	log.SetPrefix("GET /")
+	log.SetPrefix("GET / ")
 	sessionID := e.getSessionID(w, r)
 	nickname := e.getNickname(w, r)
 
@@ -159,7 +156,7 @@ func (e *emojix) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = e.renderTemplate(w, "index.html", IndexPageData{Title: "Hey, mom!", Nickname: nickname})
+	err = e.renderTemplate(w, "index.gohtml", IndexPageData{Title: "Hey, mom!", Nickname: nickname})
 	if err != nil {
 		e.handleError(w, err, "failed to render template")
 		return
@@ -168,9 +165,14 @@ func (e *emojix) Index(w http.ResponseWriter, r *http.Request) {
 
 func (e *emojix) JoinGame(w http.ResponseWriter, r *http.Request) {
 	gameID := r.PathValue("id")
+	if gameID == "" {
+		gameID = r.URL.Query().Get("game-id")
+	}
+
 	logPrefix := fmt.Sprintf("GET /game/%s/join ", gameID)
 	log.SetPrefix(logPrefix)
 
+	log.Println("game ID", gameID)
 	sessionID := e.getSessionID(w, r)
 	err := e.gameRepo.AddPlayer(r.Context(), gameID, sessionID)
 	if err != nil {
@@ -187,7 +189,7 @@ func (e *emojix) NewGame(w http.ResponseWriter, r *http.Request) {
 	sessionID := e.getSessionID(w, r)
 	ctx := r.Context()
 
-	game, err := e.gameRepo.Create(ctx)
+	game, err := e.gameRepo.Create(ctx, "Harry Potter and the Philosopher’s Stone", "🪄💎🏰")
 	if err != nil {
 		e.handleError(w, err, "failed to create game")
 		return
@@ -207,6 +209,9 @@ type GamePageData struct {
 	CurrentPlayerID string
 	Players         []model.Player
 	Messages        []model.Message
+
+	MaskedWord []string
+	EmojiHint  string
 }
 
 func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
@@ -232,13 +237,17 @@ func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	wordMaskRgex := regexp.MustCompile(`\w`)
+	maskedWord := wordMaskRgex.ReplaceAllString(game.Word, "*")
+
 	pageData := GamePageData{
 		Game:            game,
 		Players:         players,
 		CurrentPlayerID: sessionID,
 		Messages:        messages,
+		MaskedWord:      strings.Split(maskedWord, ""),
 	}
-	err = e.renderTemplate(w, "game.html", &pageData)
+	err = e.renderTemplate(w, "game.gohtml", &pageData)
 	if err != nil {
 		log.Printf("failed with err %v\n", err)
 		w.WriteHeader(http.StatusInternalServerError)
@@ -272,6 +281,3 @@ func (e *emojix) Message(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusSeeOther)
 
 }
-
-/*
- */

@@ -6,6 +6,7 @@ import (
 	"database/sql"
 	"emojix/model"
 	"encoding/hex"
+	"fmt"
 	"log"
 	"time"
 
@@ -99,7 +100,7 @@ func NewGameRepository(db *sql.DB) GameRepository {
 
 func (r *sqliteGameRepository) FindByID(ctx context.Context, id string) (model.Game, error) {
 
-	row := r.db.QueryRowContext(ctx, "SELECT id, created_at, updated_at FROM games WHERE id = ?", id)
+	row := r.db.QueryRowContext(ctx, "SELECT id, word, hint, created_at, updated_at FROM games WHERE id = ?", id)
 
 	err := row.Err()
 
@@ -111,7 +112,7 @@ func (r *sqliteGameRepository) FindByID(ctx context.Context, id string) (model.G
 
 	var createdAt, updatedAt int64
 
-	err = row.Scan(&game.ID, &createdAt, &updatedAt)
+	err = row.Scan(&game.ID, &game.Word, &game.Hint, &createdAt, &updatedAt)
 
 	if err != nil {
 		return game, err
@@ -137,7 +138,7 @@ func generateRandomID() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func (r *sqliteGameRepository) Create(ctx context.Context) (model.Game, error) {
+func (r *sqliteGameRepository) Create(ctx context.Context, word string, hint string) (model.Game, error) {
 	id, err := generateRandomID()
 	if err != nil {
 		return model.Game{}, err
@@ -145,11 +146,13 @@ func (r *sqliteGameRepository) Create(ctx context.Context) (model.Game, error) {
 
 	game := model.Game{
 		ID:        id,
+		Word:      word,
+		Hint:      hint,
 		UpdatedAt: time.Now(),
 		CreatedAt: time.Now(),
 	}
 
-	_, err = r.db.ExecContext(ctx, "INSERT INTO games (id, updated_at, created_at) VALUES (?, ?, ?)", game.ID, game.UpdatedAt.Unix(), game.CreatedAt.Unix())
+	_, err = r.db.ExecContext(ctx, "INSERT INTO games (id, word, hint, updated_at, created_at) VALUES (?, ?, ?, ?, ?)", game.ID, game.Word, game.Hint, game.UpdatedAt.Unix(), game.CreatedAt.Unix())
 
 	if err != nil {
 		return model.Game{}, err
@@ -159,6 +162,7 @@ func (r *sqliteGameRepository) Create(ctx context.Context) (model.Game, error) {
 }
 
 func (r *sqliteGameRepository) AddPlayer(ctx context.Context, gameID string, userID string) error {
+	fmt.Printf("adding player %s to game %s\n", userID, gameID)
 	_, err := r.db.ExecContext(ctx, "INSERT INTO players (game_id,  player_id, joined_at) VALUES (?, ?, ?)", gameID, userID, time.Now().Unix())
 
 	if err != nil {
@@ -170,9 +174,9 @@ func (r *sqliteGameRepository) AddPlayer(ctx context.Context, gameID string, use
 
 func (r *sqliteGameRepository) GetPlayers(ctx context.Context, gameID string) ([]model.Player, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT u.id, u.nickname, p.joined_at 
-		FROM players p 
-		JOIN users u ON p.player_id = u.id 
+		SELECT u.id, u.nickname, p.joined_at
+		FROM players p
+		JOIN users u ON p.player_id = u.id
 		WHERE p.game_id = ?`, gameID)
 	if err != nil {
 		return nil, err
@@ -200,8 +204,8 @@ func (r *sqliteGameRepository) GetPlayers(ctx context.Context, gameID string) ([
 
 func (r *sqliteGameRepository) GetMessages(ctx context.Context, gameID string) ([]model.Message, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT m.player_id, m.content, m.created_at 
-		FROM messages m 
+		SELECT m.player_id, m.content, m.created_at
+		FROM messages m
 		WHERE m.game_id = ?`, gameID)
 	if err != nil {
 		return nil, err
