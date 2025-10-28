@@ -204,11 +204,23 @@ func (e *emojix) NewGame(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/game/%s", game.ID), http.StatusSeeOther)
 }
 
+type LeaderboardEntry struct {
+	Nickname    string
+	Me          bool
+	GuessedWord bool
+	Score       int
+}
+
+type GameMessage struct {
+	Me       bool
+	Content  string
+	Nickname string
+}
+
 type GamePageData struct {
-	Game            model.Game
-	CurrentPlayerID string
-	Players         []model.Player
-	Messages        []model.Message
+	Game        model.Game
+	Leaderboard []LeaderboardEntry
+	Messages    []GameMessage
 
 	MaskedWord []string
 	EmojiHint  string
@@ -237,15 +249,71 @@ func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	wordMaskRgex := regexp.MustCompile(`\w`)
-	maskedWord := wordMaskRgex.ReplaceAllString(game.Word, "*")
+	leaderboard := []LeaderboardEntry{}
+	currentPlayerIndex := 0
+
+	for index, player := range players {
+		entry := LeaderboardEntry{
+			Nickname:    player.Nickname,
+			Me:          player.ID == sessionID,
+			GuessedWord: false,
+			Score:       0,
+		}
+
+		if entry.Me {
+			currentPlayerIndex = index
+		}
+
+		leaderboard = append(leaderboard, entry)
+	}
+
+	gameMessages := []GameMessage{}
+
+	for _, message := range messages {
+
+		player := model.Player{}
+		playerIndex := 0
+		for index, p := range players {
+			if p.ID == message.PlayerID {
+				player = p
+				playerIndex = index
+				break
+			}
+		}
+
+		gm := GameMessage{
+			Me:       message.PlayerID == sessionID,
+			Content:  message.Content,
+			Nickname: player.Nickname,
+		}
+
+		guessedWord := message.Content == game.Word
+
+		if guessedWord {
+			leaderboard[playerIndex].GuessedWord = true
+		}
+
+		if guessedWord && message.PlayerID != sessionID {
+			gm.Content = "***"
+		}
+
+		gameMessages = append(gameMessages, gm)
+	}
+
+	currentPlayer := leaderboard[currentPlayerIndex]
+
+	wordMaskRegex := regexp.MustCompile(`\w`)
+	gameWord := game.Word
+
+	if !currentPlayer.GuessedWord {
+		gameWord = wordMaskRegex.ReplaceAllString(game.Word, "*")
+	}
 
 	pageData := GamePageData{
-		Game:            game,
-		Players:         players,
-		CurrentPlayerID: sessionID,
-		Messages:        messages,
-		MaskedWord:      strings.Split(maskedWord, ""),
+		Game:        game,
+		Leaderboard: leaderboard,
+		Messages:    gameMessages,
+		MaskedWord:  strings.Split(gameWord, ""),
 	}
 	err = e.renderTemplate(w, "game.gohtml", &pageData)
 	if err != nil {
