@@ -1,23 +1,29 @@
 package emojix
 
 import (
+	"context"
 	"crypto/rand"
+	"database/sql"
 	"emojix/model"
 	"emojix/repository"
 	"encoding/hex"
 	"fmt"
 	"html/template"
 	"log"
+	"maps"
 	mathRand "math/rand"
 	"net/http"
 	"regexp"
+	"slices"
 	"strings"
 )
 
 type emojix struct {
+	db        *sql.DB
 	templates template.Template
 	userRepo  repository.UserRepository
 	gameRepo  repository.GameRepository
+	wordRepo  repository.WordRepository
 }
 
 type Emojix interface {
@@ -30,9 +36,11 @@ func NewEmojix() (Emojix, error) {
 		return nil, err
 	}
 	return &emojix{
+		db:        db,
 		templates: *template.Must(template.ParseGlob("templates/*.gohtml")),
 		userRepo:  repository.NewUserRepository(db),
 		gameRepo:  repository.NewGameRepository(db),
+		wordRepo:  repository.NewWordRepository(db),
 	}, nil
 }
 
@@ -46,7 +54,46 @@ func (e *emojix) StartServer() {
 	log.Fatal(http.ListenAndServe(":9000", nil))
 }
 
-func (e *emojix) renderTemplate(w http.ResponseWriter, name string, p interface{}) error {
+func (e *emojix) CreateGame(ctx context.Context, userID string) (model.Game, error) {
+	tx, err := e.db.BeginTx(ctx, nil)
+	if err != nil {
+		log.Printf("failed to begin transaction err %v\n", err)
+		return model.Game{}, err
+	}
+	defer tx.Rollback()
+
+	gameRepo := repository.NewGameRepository(tx)
+	wordsRepo := repository.NewWordRepository(tx)
+
+	game, err := gameRepo.Create(ctx)
+	if err != nil {
+		return model.Game{}, err
+	}
+
+	err = gameRepo.AddPlayer(ctx, game.ID, userID)
+	if err != nil {
+		return model.Game{}, err
+	}
+
+	allWords, err := wordsRepo.GetAll(ctx)
+	if err != nil {
+		return model.Game{}, err
+	}
+
+	wordsLength := len(allWords)
+	randWordIndex := mathRand.Intn(wordsLength)
+	pickedWord := allWords[randWordIndex]
+
+	err = gameRepo.AddTurn(ctx, game.ID, pickedWord.ID)
+
+	if err = tx.Commit(); err != nil {
+		return model.Game{}, err
+	}
+
+	return game, nil
+}
+
+func (e *emojix) renderTemplate(w http.ResponseWriter, name string, p any) error {
 	err := e.templates.ExecuteTemplate(w, name, p)
 	if err != nil {
 		return err
@@ -189,15 +236,9 @@ func (e *emojix) NewGame(w http.ResponseWriter, r *http.Request) {
 	sessionID := e.getSessionID(w, r)
 	ctx := r.Context()
 
-	game, err := e.gameRepo.Create(ctx, "Harry Potter and the Philosopher’s Stone", "🪄💎🏰")
+	game, err := e.CreateGame(ctx, sessionID)
 	if err != nil {
 		e.handleError(w, err, "failed to create game")
-		return
-	}
-
-	err = e.gameRepo.AddPlayer(ctx, game.ID, sessionID)
-	if err != nil {
-		e.handleError(w, err, "failed to add player to game")
 		return
 	}
 
@@ -231,89 +272,104 @@ func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
 	sessionID := e.getSessionID(w, r)
 	gameID := r.PathValue("id")
 
-	game, err := e.gameRepo.FindByID(r.Context(), gameID)
+	ctx := r.Context()
+	game, err := e.gameRepo.FindByID(ctx, gameID)
 	if err != nil {
 		e.handleError(w, err, "failed to find game")
 		return
 	}
 
-	players, err := e.gameRepo.GetPlayers(r.Context(), gameID)
+	players, err := e.gameRepo.GetPlayers(ctx, gameID)
 	if err != nil {
 		e.handleError(w, err, "failed to get players")
 		return
 	}
 
-	messages, err := e.gameRepo.GetMessages(r.Context(), gameID)
+	messages, err := e.gameRepo.GetMessages(ctx, gameID)
 	if err != nil {
 		e.handleError(w, err, "failed to get messages")
 		return
 	}
 
-	leaderboard := []LeaderboardEntry{}
-	currentPlayerIndex := 0
+	scores, err := e.gameRepo.GetScores(ctx, gameID)
+	if err != nil {
+		e.handleError(w, err, "failed to get scores")
+		return
+	}
 
-	for index, player := range players {
+	latestTurn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
+	if err != nil {
+		e.handleError(w, err, "failed to get turn")
+		return
+	}
+
+	word, err := e.wordRepo.FindByID(ctx, latestTurn.WordID)
+	if err != nil {
+		e.handleError(w, err, "failed to get turn")
+		return
+	}
+
+	leaderboardMap := map[string]LeaderboardEntry{}
+
+	isGuessedWord := func(playerID string) bool {
+		for _, score := range scores {
+			if score.PlayerID == playerID && score.TurnID == latestTurn.ID {
+				return true
+			}
+		}
+		return false
+	}
+
+	scoreMap := map[string]int{}
+	for _, score := range scores {
+		scoreMap[score.PlayerID] += score.Score
+	}
+
+	for _, player := range players {
 		entry := LeaderboardEntry{
 			Nickname:    player.Nickname,
 			Me:          player.ID == sessionID,
-			GuessedWord: false,
-			Score:       0,
+			GuessedWord: isGuessedWord(player.ID),
+			Score:       scoreMap[player.ID],
 		}
-
-		if entry.Me {
-			currentPlayerIndex = index
-		}
-
-		leaderboard = append(leaderboard, entry)
+		leaderboardMap[player.ID] = entry
 	}
 
 	gameMessages := []GameMessage{}
 
-	for _, message := range messages {
-
-		player := model.Player{}
-		playerIndex := 0
-		for index, p := range players {
-			if p.ID == message.PlayerID {
-				player = p
-				playerIndex = index
-				break
-			}
-		}
+	for _, msg := range messages {
+		le := leaderboardMap[msg.PlayerID]
 
 		gm := GameMessage{
-			Me:       message.PlayerID == sessionID,
-			Content:  message.Content,
-			Nickname: player.Nickname,
+			Me:       msg.PlayerID == sessionID,
+			Content:  msg.Content,
+			Nickname: le.Nickname,
 		}
 
-		guessedWord := message.Content == game.Word
-
-		if guessedWord {
-			leaderboard[playerIndex].GuessedWord = true
-		}
-
-		if guessedWord && message.PlayerID != sessionID {
+		if strings.EqualFold(word.Word, gm.Content) && !gm.Me && le.GuessedWord {
 			gm.Content = "***"
 		}
 
 		gameMessages = append(gameMessages, gm)
 	}
 
-	currentPlayer := leaderboard[currentPlayerIndex]
+	currentPlayer := leaderboardMap[sessionID]
 
 	wordMaskRegex := regexp.MustCompile(`\w`)
-	gameWord := game.Word
+	gameWord := word.Word
 
 	if !currentPlayer.GuessedWord {
-		gameWord = wordMaskRegex.ReplaceAllString(game.Word, "*")
+		gameWord = wordMaskRegex.ReplaceAllString(gameWord, "*")
 	}
+
+	leaderboard := slices.Collect(maps.Values(leaderboardMap))
 
 	pageData := GamePageData{
 		Game:        game,
 		Leaderboard: leaderboard,
 		Messages:    gameMessages,
 		MaskedWord:  strings.Split(gameWord, ""),
+		EmojiHint:   word.Hint,
 	}
 	err = e.renderTemplate(w, "game.gohtml", &pageData)
 	if err != nil {
@@ -323,29 +379,76 @@ func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+func (e *emojix) SaveMessage(
+	ctx context.Context,
+	gameID string,
+	turnID string,
+	userID string,
+	gameWord string,
+	content string,
+) error {
+	tx, err := e.db.BeginTx(ctx, nil)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback()
+
+	gameRepo := repository.NewGameRepository(tx)
+
+	msg, err := gameRepo.SendMessage(ctx, gameID, turnID, userID, content)
+	if err != nil {
+		return err
+	}
+
+	// TODO: make fancier word comparison
+	guessedWord := strings.EqualFold(content, gameWord)
+	if !guessedWord {
+		err = tx.Commit()
+		return err
+	}
+
+	// TODO: make fancier score calculation
+	err = gameRepo.AddScore(ctx, gameID, userID, msg.ID, turnID, 10)
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit()
+}
+
 func (e *emojix) Message(w http.ResponseWriter, r *http.Request) {
 	sessionID := e.getSessionID(w, r)
 	gameID := r.PathValue("id")
+	ctx := r.Context()
 
 	// get message content from form body content field
 	err := r.ParseForm()
 	if err != nil {
-		log.Printf("failed with err %v\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		e.handleError(w, err, "failed to parse form")
 		return
 	}
 
 	content := r.PostForm.Get("content")
 
-	// save message
-	err = e.gameRepo.SendMessage(r.Context(), gameID, sessionID, content)
+	turn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
 	if err != nil {
-		log.Printf("failed with err %v\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		e.handleError(w, err, "failed to get turn")
+		return
+	}
+
+	word, err := e.wordRepo.FindByID(ctx, turn.WordID)
+	if err != nil {
+		e.handleError(w, err, "failed to get turn")
+		return
+	}
+
+	// save message
+	err = e.SaveMessage(ctx, gameID, turn.ID, sessionID, word.Word, content)
+	if err != nil {
+		e.handleError(w, err, "failed to save message")
 		return
 	}
 
 	// refresh the page
 	http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusSeeOther)
-
 }
