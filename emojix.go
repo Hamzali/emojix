@@ -16,6 +16,7 @@ import (
 	"regexp"
 	"slices"
 	"strings"
+	"time"
 )
 
 type emojix struct {
@@ -48,10 +49,30 @@ func (e *emojix) StartServer() {
 	http.HandleFunc("POST /game/new", e.NewGame)
 	http.HandleFunc("GET /game/join", e.JoinGame)
 	http.HandleFunc("GET /game/{id}/join", e.JoinGame)
+	http.HandleFunc("GET /game/{id}/loading", e.LoadingGame)
 	http.HandleFunc("GET /game/{id}", e.Game)
 	http.HandleFunc("POST /game/{id}/message", e.Message)
 	http.HandleFunc("GET /", e.Index)
 	log.Fatal(http.ListenAndServe(":9000", nil))
+}
+
+func pickGameWord(allWords []model.Word) model.Word {
+	wordsLength := len(allWords)
+	randWordIndex := mathRand.Intn(wordsLength)
+	pickedWord := allWords[randWordIndex]
+	return pickedWord
+}
+
+func (e *emojix) NewGameTurn(ctx context.Context, gameID string) error {
+	allWords, err := e.wordRepo.GetAll(ctx)
+	if err != nil {
+		return err
+	}
+
+	pickedWord := pickGameWord(allWords)
+	err = e.gameRepo.AddTurn(ctx, gameID, pickedWord.ID)
+
+	return nil
 }
 
 func (e *emojix) CreateGame(ctx context.Context, userID string) (model.Game, error) {
@@ -80,9 +101,7 @@ func (e *emojix) CreateGame(ctx context.Context, userID string) (model.Game, err
 		return model.Game{}, err
 	}
 
-	wordsLength := len(allWords)
-	randWordIndex := mathRand.Intn(wordsLength)
-	pickedWord := allWords[randWordIndex]
+	pickedWord := pickGameWord(allWords)
 
 	err = gameRepo.AddTurn(ctx, game.ID, pickedWord.ID)
 
@@ -325,6 +344,7 @@ func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
 		scoreMap[score.PlayerID] += score.Score
 	}
 
+	allGuessedWord := true
 	for _, player := range players {
 		entry := LeaderboardEntry{
 			Nickname:    player.Nickname,
@@ -333,6 +353,15 @@ func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
 			Score:       scoreMap[player.ID],
 		}
 		leaderboardMap[player.ID] = entry
+
+		allGuessedWord = allGuessedWord && entry.GuessedWord
+	}
+
+	if allGuessedWord {
+		log.Println("All guessed waiting for new turn!")
+		http.Redirect(w, r, fmt.Sprintf("/game/%s/loading", gameID), http.StatusSeeOther)
+
+		return
 	}
 
 	gameMessages := []GameMessage{}
@@ -373,13 +402,31 @@ func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
 	}
 	err = e.renderTemplate(w, "game.gohtml", &pageData)
 	if err != nil {
-		log.Printf("failed with err %v\n", err)
-		w.WriteHeader(http.StatusInternalServerError)
+		e.handleError(w, err, "failed to render page")
 		return
 	}
 }
 
-func (e *emojix) SaveMessage(
+type GameLoadingPageData struct {
+	GameID string
+}
+
+func (e *emojix) LoadingGame(w http.ResponseWriter, r *http.Request) {
+	// TODO: check user if it belogs to the game and game state to avoid serving this page to unwanted users
+	// using the session id and game id information.
+	gameID := r.PathValue("id")
+
+	log.SetPrefix(fmt.Sprintf("GET /game/%s/loading", gameID))
+
+	pageData := GameLoadingPageData{GameID: gameID}
+	err := e.renderTemplate(w, "loading-game.gohtml", &pageData)
+	if err != nil {
+		e.handleError(w, err, "failed to render page")
+		return
+	}
+
+}
+func (e *emojix) ProcessMessage(
 	ctx context.Context,
 	gameID string,
 	turnID string,
@@ -413,7 +460,43 @@ func (e *emojix) SaveMessage(
 		return err
 	}
 
-	return tx.Commit()
+	// check if the turn is ended
+	players, err := gameRepo.GetPlayers(ctx, gameID)
+	if err != nil {
+		return err
+	}
+
+	scores, err := gameRepo.GetScores(ctx, gameID)
+	if err != nil {
+		return err
+	}
+
+	guessedCount := 0
+	for _, p := range players {
+		for _, s := range scores {
+			if s.PlayerID == p.ID && s.TurnID == turnID {
+				guessedCount += 1
+			}
+		}
+	}
+
+	err = tx.Commit()
+	if err != nil {
+		return err
+	}
+
+	if guessedCount == len(players) {
+		go func() {
+			time.Sleep(5 * time.Second)
+			err := e.NewGameTurn(context.Background(), gameID)
+			if err != nil {
+				log.Printf("failed to create new turn err: %v\n", err)
+			}
+		}()
+	}
+
+	return nil
+
 }
 
 func (e *emojix) Message(w http.ResponseWriter, r *http.Request) {
@@ -442,8 +525,8 @@ func (e *emojix) Message(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// save message
-	err = e.SaveMessage(ctx, gameID, turn.ID, sessionID, word.Word, content)
+	// process message
+	err = e.ProcessMessage(ctx, gameID, turn.ID, sessionID, word.Word, content)
 	if err != nil {
 		e.handleError(w, err, "failed to save message")
 		return
