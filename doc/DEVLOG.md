@@ -31,3 +31,21 @@ I am planning to implement end condition for a turn which is when all users gues
 There are missing pieces and bad states for this approach but I want to implement an experience for the user like gartic.io which each turn waits n amount of time starts the turn. For gartic.io turn starts when the teller user has picked the word he/she wants to tell. Since I want to implement this feature later I will not be bothered with the possible broken edge cases for now.
 
 Using this implementation without introducing anymore state now we are able to include the turn completion logic. The most obvious issue is when we are waiting 5 seconds, if some one guesses correct again it will yet another new turn trigger we need to fix this issue so there can only be one completion. Next time I am planning to refine the turn logic also introduce more interesting and competitive points logic for each guess.
+
+# Mon Nov 10 22:05:00 +03 2025
+
+I have started just by adding a simple pointing logic, it scores by the order answered. With the current state the game is playable with bad UX from 90s. I am planning to add more content and a hint mechanism maybe then I will start work on realtime touches using sse. I don't want to introduce any library yet I just want use plain js but my general problem is writing JS in current setup is dreading! So I will try to solve the improve my neovim setup to support HTML templates and on top of that support for plain browser JS and CSS.
+
+My beautiful wife is helping me out on redesigning the game ui, and she gave a really cool suggestion which to let users pick an emoji profile picture. In order to make this game playable and enjoyable I need to tackle at least following points.
+
+### must before design
+- separate guessing and messaging for both input and history
+- limit the active user count for each game ex. max 10 users (partial done)
+
+### have to but can wait 
+- make game realtime
+- user disconnect/leave game
+
+### good ideas
+- hint mechanism, get a letter for ex. 5 points
+- add profile picture for users

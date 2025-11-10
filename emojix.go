@@ -229,6 +229,8 @@ func (e *emojix) Index(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
+var maxRoomCapacity = 10
+
 func (e *emojix) JoinGame(w http.ResponseWriter, r *http.Request) {
 	gameID := r.PathValue("id")
 	if gameID == "" {
@@ -237,10 +239,25 @@ func (e *emojix) JoinGame(w http.ResponseWriter, r *http.Request) {
 
 	logPrefix := fmt.Sprintf("GET /game/%s/join ", gameID)
 	log.SetPrefix(logPrefix)
+	ctx := r.Context()
+
+	// TODO: in the future there can be multiple users joined the game but only 10 of them can be active at the same time
+	// this repository call only get full list of players who joined the game, after addign activity logic with realtime features
+	// update this call as well
+	players, err := e.gameRepo.GetPlayers(ctx, gameID)
+	if err != nil {
+		e.handleError(w, err, "failed to read players")
+		return
+	}
+
+	if len(players) >= maxRoomCapacity {
+		e.handleError(w, err, "room is full")
+		return
+	}
 
 	log.Println("game ID", gameID)
 	sessionID := e.getSessionID(w, r)
-	err := e.gameRepo.AddPlayer(r.Context(), gameID, sessionID)
+	err = e.gameRepo.AddPlayer(ctx, gameID, sessionID)
 	if err != nil {
 		e.handleError(w, err, "failed to add player to game")
 		return
