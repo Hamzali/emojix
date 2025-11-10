@@ -454,12 +454,6 @@ func (e *emojix) ProcessMessage(
 		return err
 	}
 
-	// TODO: make fancier score calculation
-	err = gameRepo.AddScore(ctx, gameID, userID, msg.ID, turnID, 10)
-	if err != nil {
-		return err
-	}
-
 	// check if the turn is ended
 	players, err := gameRepo.GetPlayers(ctx, gameID)
 	if err != nil {
@@ -471,13 +465,22 @@ func (e *emojix) ProcessMessage(
 		return err
 	}
 
-	guessedCount := 0
+	guessedCount := 1
 	for _, p := range players {
 		for _, s := range scores {
 			if s.PlayerID == p.ID && s.TurnID == turnID {
 				guessedCount += 1
 			}
 		}
+	}
+
+	pointCoeff := len(players) / guessedCount
+	basePoint := 10
+	point := basePoint * pointCoeff
+
+	err = gameRepo.AddScore(ctx, gameID, userID, msg.ID, turnID, point)
+	if err != nil {
+		return err
 	}
 
 	err = tx.Commit()
