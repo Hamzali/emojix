@@ -46,12 +46,15 @@ func NewEmojix() (Emojix, error) {
 }
 
 func (e *emojix) StartServer() {
+	http.Handle("GET /static/", http.FileServer(http.Dir("./")))
 	http.HandleFunc("POST /game/new", e.NewGame)
 	http.HandleFunc("GET /game/join", e.JoinGame)
 	http.HandleFunc("GET /game/{id}/join", e.JoinGame)
 	http.HandleFunc("GET /game/{id}/loading", e.LoadingGame)
 	http.HandleFunc("GET /game/{id}", e.Game)
 	http.HandleFunc("POST /game/{id}/message", e.Message)
+	http.HandleFunc("POST /game/{id}/guess", e.Guess)
+	http.HandleFunc("GET /game/{id}/sse", e.Sse)
 	http.HandleFunc("GET /", e.Index)
 	log.Fatal(http.ListenAndServe(":9000", nil))
 }
@@ -241,6 +244,7 @@ func (e *emojix) JoinGame(w http.ResponseWriter, r *http.Request) {
 	log.SetPrefix(logPrefix)
 	ctx := r.Context()
 
+	log.Println("joining game bitch!")
 	// TODO: in the future there can be multiple users joined the game but only 10 of them can be active at the same time
 	// this repository call only get full list of players who joined the game, after addign activity logic with realtime features
 	// update this call as well
@@ -264,7 +268,7 @@ func (e *emojix) JoinGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 	gameUrl := fmt.Sprintf("/game/%s", gameID)
-	http.Redirect(w, r, gameUrl, http.StatusMovedPermanently)
+	http.Redirect(w, r, gameUrl, http.StatusFound)
 }
 
 func (e *emojix) NewGame(w http.ResponseWriter, r *http.Request) {
@@ -392,7 +396,7 @@ func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
 			Nickname: le.Nickname,
 		}
 
-		if strings.EqualFold(word.Word, gm.Content) && !gm.Me && le.GuessedWord {
+		if strings.EqualFold(word.Word, gm.Content) && (!gm.Me || !le.GuessedWord) {
 			gm.Content = "***"
 		}
 
@@ -443,7 +447,38 @@ func (e *emojix) LoadingGame(w http.ResponseWriter, r *http.Request) {
 	}
 
 }
-func (e *emojix) ProcessMessage(
+
+func (e *emojix) Message(w http.ResponseWriter, r *http.Request) {
+	sessionID := e.getSessionID(w, r)
+	gameID := r.PathValue("id")
+	ctx := r.Context()
+
+	// get message content from form body content field
+	err := r.ParseForm()
+	if err != nil {
+		e.handleError(w, err, "failed to parse form")
+		return
+	}
+
+	content := r.PostForm.Get("content")
+
+	turn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
+	if err != nil {
+		e.handleError(w, err, "failed to get turn")
+		return
+	}
+
+	_, err = e.gameRepo.SendMessage(ctx, gameID, turn.ID, sessionID, content)
+	if err != nil {
+		e.handleError(w, err, "failed to save message")
+		return
+	}
+
+	// refresh the page
+	http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusSeeOther)
+}
+
+func (e *emojix) ProcessGuess(
 	ctx context.Context,
 	gameID string,
 	turnID string,
@@ -519,7 +554,7 @@ func (e *emojix) ProcessMessage(
 
 }
 
-func (e *emojix) Message(w http.ResponseWriter, r *http.Request) {
+func (e *emojix) Guess(w http.ResponseWriter, r *http.Request) {
 	sessionID := e.getSessionID(w, r)
 	gameID := r.PathValue("id")
 	ctx := r.Context()
@@ -546,12 +581,77 @@ func (e *emojix) Message(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// process message
-	err = e.ProcessMessage(ctx, gameID, turn.ID, sessionID, word.Word, content)
+	err = e.ProcessGuess(ctx, gameID, turn.ID, sessionID, word.Word, content)
 	if err != nil {
-		e.handleError(w, err, "failed to save message")
+		e.handleError(w, err, "failed to process guess")
 		return
 	}
 
 	// refresh the page
 	http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusSeeOther)
+}
+
+type GameSub struct {
+	userID    string
+	GameID    string
+	MsgChan   chan string
+	LastMsgAt time.Time
+}
+type GameNotifier struct {
+	subs []GameSub
+}
+
+func (gn *GameNotifier) Sub(gameID string, userID string) {
+	gameSub := GameSub{userID, gameID, make(chan string), time.Now()}
+	gn.subs = append(gn.subs, gameSub)
+}
+
+func (gn *GameNotifier) Unsub(userID string) {
+	newSubs := []GameSub{}
+	for _, s := range gn.subs {
+		if s.userID == userID {
+			// TODO: cleanup channel
+			continue
+		}
+		newSubs = append(newSubs, s)
+
+	}
+}
+
+func (gn *GameNotifier) Pub(gameID string) {
+	for _, s := range gn.subs {
+		if s.GameID != gameID {
+			continue
+		}
+
+		s.LastMsgAt = time.Now()
+		// TODO: publish message to all
+	}
+}
+
+func (e *emojix) Sse(w http.ResponseWriter, r *http.Request) {
+	sessionID := e.getSessionID(w, r)
+	gameID := r.PathValue("id")
+
+	w.Header().Set("Content-Type", "text/event-stream")
+
+	log.Println("sse connected", sessionID, gameID)
+
+	rc := http.NewResponseController(w)
+	if rc == nil {
+		w.WriteHeader(http.StatusInternalServerError)
+		log.Println("failed to intialize the response controller")
+		return
+	}
+
+	for {
+		time.Sleep(3 * time.Second)
+		w.Write([]byte("event: ping\ndata: \n\n"))
+		err := rc.Flush()
+		if err != nil {
+			log.Printf("failed to flush with err: %v", err)
+			return
+		}
+	}
+
 }

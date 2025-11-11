@@ -1,23 +1,26 @@
 {{template "base"}}
 <button>
-    <a href="/">Home</a>
+	<a href="/">Home</a>
 </button>
-
 <h1>
-	 Game Page
+	Game Page
 </h1>
-
-<h2> Word </h2>
-<content style="display: flex; flex-direction: row; align-items: center; gap: 10px; font-size: 1rem;">
-    {{range .MaskedWord}}
-        <p>{{.}}</p>
-    {{end}}
-</content>
-
-
-<h2> Emoji Hint </h2>
-<p style="font-size: 2rem;"> {{.EmojiHint}} </p>
-
+<h2>
+	Word
+</h2>
+<section style="display: flex; flex-direction: row; align-items: center; gap: 10px; font-size: 1rem;">
+	{{range .MaskedWord}}
+		<p>
+			{{.}}
+		</p>
+	{{end}}
+</section>
+<h2>
+	Emoji Hint
+</h2>
+<p style="font-size: 2rem;">
+	{{.EmojiHint}}
+</p>
 <div>
 	<h2>
 		Leaderboard
@@ -32,12 +35,10 @@
 					{{.Nickname}}
 				{{end}}
 				</span>
-
 				{{if .GuessedWord}}
 					<span>✅</span>
 				{{end}}
-
-				<span> {{.Score}} </span>
+				<span>{{.Score}}</span>
 			</li>
 		{{end}}
 	</ul>
@@ -47,8 +48,7 @@
 	<section>
 		{{range .Messages}}
 			<p>
-			    <span>{{.Nickname}}</span>
-
+				<span>{{.Nickname}}</span>
 				{{if .Me}}
 					<strong>{{.Content}}</strong>
 				{{else}}
@@ -63,4 +63,12 @@
 			Send
 		</button>
 	</form>
+	<form method="post" action="/game/{{.Game.ID}}/guess">
+		<textarea name="content" placeholder="Write your guess here!"></textarea>
+		<button type="submit">
+			Send
+		</button>
+	</form>
 </div>
+<script src="/static/sse.js">
+</script>
