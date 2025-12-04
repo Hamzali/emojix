@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"fmt"
 	"html/template"
+	"io"
 	"log"
 	"maps"
 	mathRand "math/rand"
@@ -20,11 +21,12 @@ import (
 )
 
 type emojix struct {
-	db        *sql.DB
-	templates template.Template
-	userRepo  repository.UserRepository
-	gameRepo  repository.GameRepository
-	wordRepo  repository.WordRepository
+	db           *sql.DB
+	templates    template.Template
+	userRepo     repository.UserRepository
+	gameRepo     repository.GameRepository
+	wordRepo     repository.WordRepository
+	gameNotifier GameNotifier
 }
 
 type Emojix interface {
@@ -37,11 +39,12 @@ func NewEmojix() (Emojix, error) {
 		return nil, err
 	}
 	return &emojix{
-		db:        db,
-		templates: *template.Must(template.ParseGlob("templates/*.gohtml")),
-		userRepo:  repository.NewUserRepository(db),
-		gameRepo:  repository.NewGameRepository(db),
-		wordRepo:  repository.NewWordRepository(db),
+		db:           db,
+		templates:    *template.Must(template.ParseGlob("templates/*.gohtml")),
+		userRepo:     repository.NewUserRepository(db),
+		gameRepo:     repository.NewGameRepository(db),
+		wordRepo:     repository.NewWordRepository(db),
+		gameNotifier: NewGameNotifier(),
 	}, nil
 }
 
@@ -474,6 +477,8 @@ func (e *emojix) Message(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	e.gameNotifier.Pub(gameID, sessionID, GameNotification{"msg", content})
+
 	// refresh the page
 	http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusSeeOther)
 }
@@ -592,40 +597,56 @@ func (e *emojix) Guess(w http.ResponseWriter, r *http.Request) {
 }
 
 type GameSub struct {
-	userID    string
+	UserID    string
 	GameID    string
-	MsgChan   chan string
+	NotifChan chan GameNotification
 	LastMsgAt time.Time
+}
+
+type GameNotification struct {
+	Type    string
+	Content string
 }
 type GameNotifier struct {
 	subs []GameSub
 }
 
-func (gn *GameNotifier) Sub(gameID string, userID string) {
-	gameSub := GameSub{userID, gameID, make(chan string), time.Now()}
+func NewGameNotifier() GameNotifier {
+	// we need to listen for channel in order to sub/unsub people as well
+	// also think about one channel to funnel all the messages and filter at the sub side
+	return GameNotifier{subs: []GameSub{}}
+}
+
+func (gn *GameNotifier) Sub(gameID string, userID string) chan GameNotification {
+	for _, sub := range gn.subs {
+		if sub.GameID == gameID && sub.UserID == userID {
+			return sub.NotifChan
+		}
+	}
+
+	ch := make(chan GameNotification)
+	gameSub := GameSub{userID, gameID, ch, time.Now()}
 	gn.subs = append(gn.subs, gameSub)
+	return ch
 }
 
 func (gn *GameNotifier) Unsub(userID string) {
 	newSubs := []GameSub{}
 	for _, s := range gn.subs {
-		if s.userID == userID {
-			// TODO: cleanup channel
+		if s.UserID == userID {
 			continue
 		}
 		newSubs = append(newSubs, s)
-
 	}
 }
 
-func (gn *GameNotifier) Pub(gameID string) {
+func (gn *GameNotifier) Pub(gameID string, userID string, notif GameNotification) {
 	for _, s := range gn.subs {
-		if s.GameID != gameID {
+		if s.GameID != gameID || s.UserID == userID {
 			continue
 		}
 
-		s.LastMsgAt = time.Now()
-		// TODO: publish message to all
+		s.NotifChan <- notif
 	}
 }
 
@@ -644,14 +665,38 @@ func (e *emojix) Sse(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	for {
-		time.Sleep(3 * time.Second)
-		w.Write([]byte("event: ping\ndata: \n\n"))
+	gameSubCh := e.gameNotifier.Sub(gameID, sessionID)
+
+	// TODO: we need to also sender information as well
+	sendSseMsg := func(msgType string, content string) error {
+		sseContent := fmt.Sprintf("event: %s\ndata: %s\n\n", msgType, content)
+		io.WriteString(w, sseContent)
 		err := rc.Flush()
-		if err != nil {
-			log.Printf("failed to flush with err: %v", err)
-			return
+		return err
+
+	}
+
+	for {
+
+		select {
+		case msg := <-gameSubCh:
+			log.Println("notification", msg)
+			err := sendSseMsg(msg.Type, msg.Content)
+			if err != nil {
+				e.gameNotifier.Unsub(sessionID)
+				log.Printf("failed to flush with err: %v", err)
+				return
+			}
+		case <-time.After(30 * time.Second):
+			log.Println("timed out")
+			err := sendSseMsg("ping", "")
+			if err != nil {
+				e.gameNotifier.Unsub(sessionID)
+				log.Printf("failed to flush with err: %v", err)
+				return
+			}
 		}
+
 	}
 
 }
