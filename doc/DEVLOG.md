@@ -59,3 +59,17 @@ On side note I have tried to enable good support for golang html templates but f
 # Thu Dec  4 03:06:06 AM +03 2025
 
 I have progressed on realtime data flow, currently there is a data flow between users realtime via SSE and go channels. I need to explore more ways to make the connection stable also developing in linux is a breeze btw! First thing I wanna focus is transferring messages between users realtim then I will focus on making users active/inactive and decide if a user is in the game or not. I also need to construct a simple logic to keep players in the game or kick them out.
+
+# Fri Dec  5 01:55:56 AM +03 2025
+
+Today I have discovered following bugs;
+
+- if there are no users it thinks game ended and gets into a infinite loop (fixed)
+
+- also cookies are nasty to control if app starts at /game it registers a new user id which is non existent then causes the first bug. Gotta have better user id generation and should be global for whole app regardless of the path.
+
+Connected the realtime flow it has its problems sometimes it does not connect properly but main mechanics works like a charm. Also integrated simply on UI for only the messaging part but I think it is kinda time to take care UI a bit more introduce more structured way to develop it. Because currently when a user sends a message they hard refresh the page which is annoying at the least even when developing.
+
+I will consider adding HTMX most likely I will only need to change some response values and I am good to go. For example, for sending message I need to return the message content in html instead of refreshing the page like old times.
+
+Last point, I need some tests that verify backbone logic because each time I face weird errors and it is hard add more logic without breaking the old ones. I have some tests for DB interaction but now business logic is complex enough to write tests about.

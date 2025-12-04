@@ -279,6 +279,7 @@ func (e *emojix) NewGame(w http.ResponseWriter, r *http.Request) {
 	sessionID := e.getSessionID(w, r)
 	ctx := r.Context()
 
+	log.Println("user id", sessionID)
 	game, err := e.CreateGame(ctx, sessionID)
 	if err != nil {
 		e.handleError(w, err, "failed to create game")
@@ -368,7 +369,12 @@ func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
 		scoreMap[score.PlayerID] += score.Score
 	}
 
-	allGuessedWord := true
+	allGuessedWord := false
+	// if there is any player we can check if they guessed
+	if len(players) > 0 {
+		allGuessedWord = true
+	}
+
 	for _, player := range players {
 		entry := LeaderboardEntry{
 			Nickname:    player.Nickname,
@@ -471,13 +477,19 @@ func (e *emojix) Message(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	currPlayer, err := e.userRepo.FindByID(ctx, sessionID)
+	if err != nil {
+		e.handleError(w, err, "failed to fetch current player")
+		return
+	}
+
 	_, err = e.gameRepo.SendMessage(ctx, gameID, turn.ID, sessionID, content)
 	if err != nil {
 		e.handleError(w, err, "failed to save message")
 		return
 	}
 
-	e.gameNotifier.Pub(gameID, sessionID, GameNotification{"msg", content})
+	e.gameNotifier.Pub(gameID, sessionID, &GameMsgNotification{currPlayer.Nickname, content})
 
 	// refresh the page
 	http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusSeeOther)
@@ -603,9 +615,22 @@ type GameSub struct {
 	LastMsgAt time.Time
 }
 
-type GameNotification struct {
-	Type    string
-	Content string
+type GameMsgNotification struct {
+	Nickname string
+	Content  string
+}
+
+func (gmn *GameMsgNotification) GetType() string {
+	return "msg"
+}
+
+func (gmn *GameMsgNotification) GetData() string {
+	return fmt.Sprintf("%s,%s", gmn.Nickname, gmn.Content)
+}
+
+type GameNotification interface {
+	GetType() string
+	GetData() string
 }
 type GameNotifier struct {
 	subs []GameSub
@@ -667,7 +692,6 @@ func (e *emojix) Sse(w http.ResponseWriter, r *http.Request) {
 
 	gameSubCh := e.gameNotifier.Sub(gameID, sessionID)
 
-	// TODO: we need to also sender information as well
 	sendSseMsg := func(msgType string, content string) error {
 		sseContent := fmt.Sprintf("event: %s\ndata: %s\n\n", msgType, content)
 		io.WriteString(w, sseContent)
@@ -681,7 +705,7 @@ func (e *emojix) Sse(w http.ResponseWriter, r *http.Request) {
 		select {
 		case msg := <-gameSubCh:
 			log.Println("notification", msg)
-			err := sendSseMsg(msg.Type, msg.Content)
+			err := sendSseMsg(msg.GetType(), msg.GetData())
 			if err != nil {
 				e.gameNotifier.Unsub(sessionID)
 				log.Printf("failed to flush with err: %v", err)
