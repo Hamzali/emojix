@@ -196,7 +196,8 @@ func (e *emojix) getSessionID(w http.ResponseWriter, r *http.Request) string {
 			log.Printf("failed to generate session id err %v\n", err)
 			return ""
 		}
-		w.Header().Add("Set-Cookie", sessionCookieKey+"="+newSessionID)
+		setCookie := fmt.Sprintf("%s=%s; Path=/; Secure; HttpOnly", sessionCookieKey, newSessionID)
+		w.Header().Add("Set-Cookie", setCookie)
 		return newSessionID
 	}
 
@@ -210,7 +211,8 @@ func (e *emojix) getNickname(w http.ResponseWriter, r *http.Request) string {
 
 	if err != nil {
 		nickname := GenerateNickname()
-		w.Header().Add("Set-Cookie", nicknameCookieKey+"="+nickname)
+		setCookie := fmt.Sprintf("%s=%s; Path=/; Secure; HttpOnly", nicknameCookieKey, nickname)
+		w.Header().Add("Set-Cookie", setCookie)
 		return nickname
 	}
 
@@ -311,6 +313,15 @@ type GamePageData struct {
 	EmojiHint  string
 }
 
+func maskContent(content string, word string, currUserID string, senderUserID string, guessedWord bool) string {
+	notSelf := currUserID != senderUserID
+	if strings.EqualFold(word, content) && (notSelf || !guessedWord) {
+		return "***"
+	}
+
+	return content
+}
+
 func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
 	log.SetPrefix("GET /game ")
 	sessionID := e.getSessionID(w, r)
@@ -405,12 +416,13 @@ func (e *emojix) Game(w http.ResponseWriter, r *http.Request) {
 			Nickname: le.Nickname,
 		}
 
-		if strings.EqualFold(word.Word, gm.Content) && (!gm.Me || !le.GuessedWord) {
-			gm.Content = "***"
-		}
+		gm.Content = maskContent(gm.Content, word.Word, sessionID, msg.PlayerID, le.GuessedWord)
 
 		gameMessages = append(gameMessages, gm)
 	}
+
+	// newest message at top
+	slices.Reverse(gameMessages)
 
 	currentPlayer := leaderboardMap[sessionID]
 
@@ -585,6 +597,12 @@ func (e *emojix) Guess(w http.ResponseWriter, r *http.Request) {
 
 	content := r.PostForm.Get("content")
 
+	currPlayer, err := e.userRepo.FindByID(ctx, sessionID)
+	if err != nil {
+		e.handleError(w, err, "failed to fetch current player")
+		return
+	}
+
 	turn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
 	if err != nil {
 		e.handleError(w, err, "failed to get turn")
@@ -604,6 +622,7 @@ func (e *emojix) Guess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	e.gameNotifier.Pub(gameID, sessionID, &GameMsgNotification{currPlayer.Nickname, content})
 	// refresh the page
 	http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusSeeOther)
 }
@@ -680,6 +699,8 @@ func (e *emojix) Sse(w http.ResponseWriter, r *http.Request) {
 	gameID := r.PathValue("id")
 
 	w.Header().Set("Content-Type", "text/event-stream")
+	w.Header().Set("Cache-Control", "no-cache")
+	w.Header().Set("X-Accel-Buffering", "no")
 
 	log.Println("sse connected", sessionID, gameID)
 
@@ -700,6 +721,13 @@ func (e *emojix) Sse(w http.ResponseWriter, r *http.Request) {
 
 	}
 
+	err := sendSseMsg("ping", "")
+	if err != nil {
+		e.gameNotifier.Unsub(sessionID)
+		log.Printf("failed to flush with err: %v", err)
+		return
+	}
+
 	for {
 
 		select {
@@ -711,7 +739,7 @@ func (e *emojix) Sse(w http.ResponseWriter, r *http.Request) {
 				log.Printf("failed to flush with err: %v", err)
 				return
 			}
-		case <-time.After(30 * time.Second):
+		case <-time.After(5 * time.Second):
 			log.Println("timed out")
 			err := sendSseMsg("ping", "")
 			if err != nil {
@@ -720,7 +748,6 @@ func (e *emojix) Sse(w http.ResponseWriter, r *http.Request) {
 				return
 			}
 		}
-
 	}
 
 }

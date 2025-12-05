@@ -42,6 +42,18 @@
 			</li>
 		{{end}}
 	</ul>
+	<form method="post" action="/game/{{.Game.ID}}/message">
+		<textarea name="content" placeholder="Write you message here!"></textarea>
+		<button type="submit">
+			Send
+		</button>
+	</form>
+	<form method="post" action="/game/{{.Game.ID}}/guess">
+		<textarea name="content" placeholder="Write your guess here!"></textarea>
+		<button type="submit">
+			Send
+		</button>
+	</form>
 	<h2>
 		Messages
 	</h2>
@@ -57,18 +69,6 @@
 			</p>
 		{{end}}
 	</section>
-	<form method="post" action="/game/{{.Game.ID}}/message">
-		<textarea name="content" placeholder="Write you message here!"></textarea>
-		<button type="submit">
-			Send
-		</button>
-	</form>
-	<form method="post" action="/game/{{.Game.ID}}/guess">
-		<textarea name="content" placeholder="Write your guess here!"></textarea>
-		<button type="submit">
-			Send
-		</button>
-	</form>
 </div>
 <script src="/static/sse.js">
 </script>

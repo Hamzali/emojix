@@ -7,6 +7,10 @@ window.onload = function() {
 
 	eventSource = new EventSource(ssePath)
 
+	eventSource.addEventListener("open", (event) => {
+		console.log('sse connected', event)
+	})
+
 	eventSource.addEventListener("ping", () => {
 		console.log('this ping is coming from server!')
 	})
@@ -21,7 +25,7 @@ window.onload = function() {
 		const newMessageNode = document.createElement("p")
 		newMessageNode.textContent = `${nickname} ${message}`
 
-		messagesContainer.appendChild(newMessageNode)
+		messagesContainer.prepend(newMessageNode)
 	})
 }
 

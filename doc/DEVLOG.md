@@ -73,3 +73,15 @@ Connected the realtime flow it has its problems sometimes it does not connect pr
 I will consider adding HTMX most likely I will only need to change some response values and I am good to go. For example, for sending message I need to return the message content in html instead of refreshing the page like old times.
 
 Last point, I need some tests that verify backbone logic because each time I face weird errors and it is hard add more logic without breaking the old ones. I have some tests for DB interaction but now business logic is complex enough to write tests about.
+
+# Fri Dec  5 19:34:07 +03 2025
+
+I have fixed the cookie issue by forcing the cookie path and learnt that you can pick cookie path and default behaviour is the current path. Also by adding more required headers also resolved the sse connection bug now it is stable with the communication and does not lag when it connects because I ping directly maybe there is a better way but good enough for now.
+
+I have integrated guessing as well but I have a major problem when I have tried to apply the masking logic for guesses in sse updates because current setup does not care about the reciever side when formatting the message content thereofor, I am not able to mask realtime guesses. However, I will rest on this and find a better solution maybe move code around apply some tests to discover bettter abstraction or remove abstractions all together and format at reciever side.
+
+As next steps I need to connect two main events with sse
+- player join/leave
+- turn end/start
+
+Maybe I can follow the latest users just sending down data at timeout message in the channel but still not convinced it is a good idea.
