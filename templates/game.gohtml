@@ -42,13 +42,13 @@
 			</li>
 		{{end}}
 	</ul>
-	<form method="post" action="/game/{{.Game.ID}}/message">
+	<form method="post" action="/game/{{.GameID}}/message">
 		<textarea name="content" placeholder="Write you message here!"></textarea>
 		<button type="submit">
 			Send
 		</button>
 	</form>
-	<form method="post" action="/game/{{.Game.ID}}/guess">
+	<form method="post" action="/game/{{.GameID}}/guess">
 		<textarea name="content" placeholder="Write your guess here!"></textarea>
 		<button type="submit">
 			Send

@@ -37,3 +37,14 @@ type WordRepository interface {
 	GetAll(ctx context.Context) ([]model.Word, error)
 	FindByID(ctx context.Context, id string) (model.Word, error)
 }
+
+type UnitOfWorkFactory interface {
+	New(ctx context.Context) (UnitOfWork, error)
+}
+
+type UnitOfWork interface {
+	GameRepository() GameRepository
+
+	Rollback() error
+	Commit() error
+}

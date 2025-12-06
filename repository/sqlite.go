@@ -18,7 +18,44 @@ type DBTX interface {
 	ExecContext(ctx context.Context, query string, args ...any) (sql.Result, error)
 }
 
-func InitDB(fileName string) (*sql.DB, error) {
+func NewUnitOfWorkFactory(db *sql.DB) UnitOfWorkFactory {
+	return &sqliteUnitOfWorkFactory{db}
+}
+
+type sqliteUnitOfWorkFactory struct {
+	db *sql.DB
+}
+
+func (uowf *sqliteUnitOfWorkFactory) New(ctx context.Context) (UnitOfWork, error) {
+	tx, err := uowf.db.BeginTx(ctx, nil)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &sqliteUnitOfWork{tx}, nil
+}
+
+type sqliteUnitOfWork struct {
+	tx *sql.Tx
+}
+
+// Commit implements UnitOfWork.
+func (uow *sqliteUnitOfWork) Commit() error {
+	return uow.tx.Commit()
+}
+
+// Rollback implements UnitOfWork.
+func (uow *sqliteUnitOfWork) Rollback() error {
+	return uow.tx.Rollback()
+}
+
+// GameRepository implements UnitOfWork.
+func (uow *sqliteUnitOfWork) GameRepository() GameRepository {
+	return NewGameRepository(uow.tx)
+}
+
+func InitSqliteDB(fileName string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", fileName)
 	if err != nil {
 		return db, err

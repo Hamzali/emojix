@@ -85,3 +85,17 @@ As next steps I need to connect two main events with sse
 - turn end/start
 
 Maybe I can follow the latest users just sending down data at timeout message in the channel but still not convinced it is a good idea.
+
+
+repository(params -> invokes external data calls -> domain models)
+services(params -> interacts with external dependecies -> apply side effects)
+usecase(params -> calls repos, services -> domain models) definition of business logics
+controller(HTTP in -> call usecases -> HTML out): takes in external interaction (ex http call) and calls usecase layer by getting appropraite params and shapes the result for the medium (ex html templates)
+
+# Sun Dec  7 01:57:52 +03 2025
+
+I have updated the structure in order to be able to add tests to usecase layer. Because I have been getting weird bugs for each change I made due to lack of automated correctness control points which are called tests. Updated structure about the same as described in the last devlog with minimal changes but it is ready to be tested without the need of initializing everything.
+
+Also I have resolved bugs about user initializations and improved how I handle it by using redirects which is enabled by the new structure. However, it needs more care and thinking because in current way it can be exploited by bad actors.
+
+Next time I work on emojix I am planning to work on the other realtime features and also add tests as much as possible at usecase layer. I think it is quite early to test end to end but I can at least test the http/html layers end to end but still I won't add any tests related to controller/server layer.

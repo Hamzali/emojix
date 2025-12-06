@@ -11,7 +11,7 @@ import (
 )
 
 func InitTestDB() (*sql.DB, error) {
-	db, err := InitDB(":memory:")
+	db, err := InitSqliteDB(":memory:")
 	if err != nil {
 		return nil, err
 	}

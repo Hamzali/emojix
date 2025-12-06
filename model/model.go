@@ -56,6 +56,25 @@ type User struct {
 }
 
 type LeaderboardEntry struct {
-	PlayerID string
-	Score    int
+	Nickname    string
+	Me          bool
+	GuessedWord bool
+	Score       int
+}
+
+type GameStateMessage struct {
+	Me       bool
+	Content  string
+	Nickname string
+}
+
+type GameState struct {
+	GameID        string
+	CurrentUserID string
+	TurnID        string
+	TurnEnded     bool
+	Word          string
+	Hint          string
+	Messages      []GameStateMessage
+	Leaderboard   []LeaderboardEntry
 }
