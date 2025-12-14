@@ -336,5 +336,8 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 		return nil
 	})
 
-	log.Printf("failed to send message: %v", err)
+	if err != nil {
+		log.Printf("failed to send message: %v", err)
+	}
+
 }

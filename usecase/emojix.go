@@ -64,12 +64,10 @@ func (e *emojixUsecase) GameUpdates(ctx context.Context, gameID string, userID s
 				e.gameNotifier.Unsub(userID)
 				return err
 			}
-		case <-time.After(5 * time.Second):
-			err := handler("ping", "")
-			if err != nil {
-				e.gameNotifier.Unsub(userID)
-				return err
-			}
+		case <-ctx.Done():
+			log.Println("closed the request cleaning up")
+			e.gameNotifier.Unsub(userID)
+			return nil
 		}
 	}
 }
@@ -170,7 +168,7 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 	// newest message at top
 	slices.Reverse(gameMessages)
 
-	currentPlayer := leaderboardMap[gameState.CurrentUserID]
+	currentPlayer := leaderboardMap[currentUserID]
 
 	wordMaskRegex := regexp.MustCompile(`\w`)
 	gameWord := word.Word
@@ -296,35 +294,6 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string) (model.Game
 	}
 
 	return game, nil
-}
-
-var maxRoomCapacity = 10
-
-func (e *emojixUsecase) JoinGame(ctx context.Context, gameID string, userID string) error {
-	// TODO: in the future there can be multiple users joined the game but only 10 of them can be active at the same time
-	// this repository call only get full list of players who joined the game, after addign activity logic with realtime features
-	// update this call as well
-	players, err := e.gameRepo.GetPlayers(ctx, gameID)
-	if err != nil {
-		return err
-	}
-
-	for _, p := range players {
-		if p.ID == userID {
-			return errors.New("already joined")
-		}
-	}
-
-	if len(players) >= maxRoomCapacity {
-		return errors.New("room is full")
-	}
-
-	err = e.gameRepo.AddPlayer(ctx, gameID, userID)
-	if err != nil {
-		return err
-	}
-
-	return nil
 }
 
 type GameMsgNotification struct {
