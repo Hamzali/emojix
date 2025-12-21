@@ -22,13 +22,14 @@ CREATE TABLE IF NOT EXISTS game_turns (
 CREATE TABLE IF NOT EXISTS players (
 	game_id TEXT NOT NULL,
 	player_id TEXT NOT NULL,
+	state TEXT NOT NULL,
 	joined_at INT NOT NULL,
 	FOREIGN KEY (game_id) REFERENCES games(id),
 	FOREIGN KEY (player_id) REFERENCES users(id)
 );
 
 CREATE TABLE IF NOT EXISTS messages (
-    id TEXT PRIMARY KEY,
+    	id TEXT PRIMARY KEY,
 	game_id TEXT NOT NULL,
 	player_id TEXT,
 	turn_id TEXT,

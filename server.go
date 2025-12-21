@@ -1,6 +1,7 @@
 package emojix
 
 import (
+	"context"
 	"emojix/model"
 	"emojix/usecase"
 	"fmt"
@@ -9,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"strings"
+	"time"
 )
 
 type EmojixServer interface {
@@ -340,4 +342,15 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 		log.Printf("failed to send message: %v", err)
 	}
 
+	go func() {
+		// TODO: experiment and find a better wait amount
+		time.Sleep(time.Second * 5)
+
+		ctx := context.Background()
+		err := e.emojixUsecase.KickInactiveUser(ctx, gameID, userID)
+		if err != nil {
+			log.Println("failed to kick inactive user", err)
+		}
+
+	}()
 }

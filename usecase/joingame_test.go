@@ -14,7 +14,6 @@ import (
 func TestJoinGame(t *testing.T) {
 
 	t.Run("adds player", func(t *testing.T) {
-
 		mur := &repository.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{
@@ -47,8 +46,10 @@ func TestJoinGame(t *testing.T) {
 				return nil
 			},
 		}
+		pubCh := make(chan int)
 		mgns := &service.MockGameNotifier{
 			PubMock: func(gameID, userID string, notif service.GameNotification) {
+				pubCh <- 0
 				err := assertCalledWithError("GameID", "some-game-id", gameID)
 				if err != nil {
 					t.Error(err)
@@ -82,6 +83,7 @@ func TestJoinGame(t *testing.T) {
 			t.Error("expected GameRepository.AddPlayer to be called")
 		}
 
+		<-pubCh
 		if mgns.PubCalled == false {
 			t.Error("expected GameNotifier.Pub to be called")
 		}

@@ -208,8 +208,22 @@ func (r *sqliteGameRepository) Create(ctx context.Context) (model.Game, error) {
 	return game, nil
 }
 
+func (r *sqliteGameRepository) SetPlayerState(ctx context.Context, gameID string, userID string, state model.PlayerState) error {
+	_, err := r.db.ExecContext(
+		ctx,
+		"UPDATE players SET state = ? WHERE game_id = ? AND player_id = ?",
+		state, gameID, userID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return nil
+}
+
 func (r *sqliteGameRepository) AddPlayer(ctx context.Context, gameID string, userID string) error {
-	_, err := r.db.ExecContext(ctx, "INSERT INTO players (game_id,  player_id, joined_at) VALUES (?, ?, ?)", gameID, userID, time.Now().UnixMicro())
+	_, err := r.db.ExecContext(ctx, "INSERT INTO players (game_id,  player_id, state, joined_at) VALUES (?, ?, ?, ?)", gameID, userID, model.ActivePlayerState, time.Now().UnixMicro())
 
 	if err != nil {
 		return err
@@ -220,7 +234,7 @@ func (r *sqliteGameRepository) AddPlayer(ctx context.Context, gameID string, use
 
 func (r *sqliteGameRepository) GetPlayers(ctx context.Context, gameID string) ([]model.Player, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT u.id, u.nickname, p.joined_at
+		SELECT u.id, u.nickname, p.state, p.joined_at
 		FROM players p
 		JOIN users u ON p.player_id = u.id
 		WHERE p.game_id = ?`, gameID)
@@ -233,7 +247,7 @@ func (r *sqliteGameRepository) GetPlayers(ctx context.Context, gameID string) ([
 	for rows.Next() {
 		var player model.Player
 		var joinedAt int64
-		err = rows.Scan(&player.ID, &player.Nickname, &joinedAt)
+		err = rows.Scan(&player.ID, &player.Nickname, &player.State, &joinedAt)
 		if err != nil {
 			return nil, err
 		}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"emojix/model"
 	"emojix/repository"
+	"emojix/service"
 	"emojix/usecase"
 	"errors"
 	"fmt"
@@ -299,4 +300,70 @@ func TestGameState(t *testing.T) {
 			t.Errorf("expected to have error %v but got %v", mockErr, err)
 		}
 	})
+}
+
+func TestGameUpdates(t *testing.T) {
+	ch := make(chan service.GameNotification)
+	mgn := &service.MockGameNotifier{
+		SubMock: func(gameID, userID string) chan service.GameNotification {
+			err := assertCalledWithError("GameID", "some-game-id", gameID)
+			if err != nil {
+				t.Error(err)
+			}
+
+			err = assertCalledWithError("UserID", "some-user-id", userID)
+			if err != nil {
+				t.Error(err)
+			}
+
+			return ch
+		},
+		UnsubMock: func(userID string) {
+			err := assertCalledWithError("UserID", "some-user-id", userID)
+			if err != nil {
+				t.Error(err)
+			}
+
+		},
+	}
+	emojixUsecase := usecase.NewEmojixUsecase(
+		nil,
+		nil,
+		nil,
+		nil,
+		mgn,
+	)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		ch <- &usecase.GameJoinNotification{Nickname: "nick-1", PlayerID: "player-1"}
+		cancel()
+	}()
+
+	msgCount := 0
+	err := emojixUsecase.GameUpdates(ctx, "some-game-id", "some-user-id", func(notifType string, content string) error {
+
+		msgCount += 1
+
+		expectedType := "join"
+		if expectedType != notifType {
+			t.Errorf("expected to have notif type '%s' but got '%s'", expectedType, notifType)
+		}
+
+		expectedContent := "player-1,nick-1"
+		if expectedContent != content {
+
+			t.Errorf("expected to have notif content '%s' but got '%s'", expectedContent, content)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		t.Errorf("expected to not error but got %v", err)
+	}
+
+	if mgn.UnsubMockCalled != true {
+		t.Error("expected to unsubscribe")
+	}
 }

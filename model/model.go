@@ -32,9 +32,16 @@ type Score struct {
 	CreatedAt time.Time
 }
 
+type PlayerState = string
+
+var ActivePlayerState PlayerState = "active"
+var InactivePlayerState PlayerState = "inactive"
+
 type Player struct {
 	ID       string
 	Nickname string
+
+	State string
 
 	JoinedAt time.Time
 }

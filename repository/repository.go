@@ -20,6 +20,7 @@ type GameRepository interface {
 
 	// Players/Users
 	AddPlayer(ctx context.Context, gameID string, userID string) error
+	SetPlayerState(ctx context.Context, gameID string, userID string, state model.PlayerState) error
 	GetPlayers(ctx context.Context, gameID string) ([]model.Player, error)
 
 	GetLatestTurn(ctx context.Context, gameID string) (model.GameTurn, error)

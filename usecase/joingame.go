@@ -56,7 +56,7 @@ func (e *emojixUsecase) JoinGame(ctx context.Context, gameID string, userID stri
 
 	log.Println("added player")
 
-	e.gameNotifier.Pub(gameID, player.ID, &GameJoinNotification{
+	go e.gameNotifier.Pub(gameID, player.ID, &GameJoinNotification{
 		Nickname: player.Nickname,
 		PlayerID: player.ID,
 	})

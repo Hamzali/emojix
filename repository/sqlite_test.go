@@ -349,9 +349,65 @@ func TestGameRepository(t *testing.T) {
 		if players[0].Nickname != "user-nickname" {
 			t.Errorf("expected nickname %s but got %s", "user-nickname", players[0].Nickname)
 		}
+
+		if players[0].State != "active" {
+			t.Errorf("expected nickname %s but got %s", "active", players[0].State)
+		}
+
 		if players[0].JoinedAt.Compare(now) != 1 {
 			t.Errorf("expected joined_at after %v but got %v", now, players[0].JoinedAt)
 		}
+	})
+
+	t.Run("SetPlayerState", func(t *testing.T) {
+		cleanupDB()
+
+		now := time.Now()
+		game, err := repo.Create(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec("INSERT INTO users (id, nickname, created_at, updated_at) VALUES ('user-id', 'user-nickname', ?, ?);", now.UnixMicro(), now.UnixMicro())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = repo.AddPlayer(context.Background(), game.ID, "user-id")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		err = repo.SetPlayerState(context.Background(), game.ID, "user-id", model.InactivePlayerState)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		players, err := repo.GetPlayers(context.Background(), game.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		if len(players) != 1 {
+			t.Errorf("expected 1 player but got %d", len(players))
+		}
+
+		// first player
+		if players[0].ID != "user-id" {
+			t.Errorf("expected id %s but got %s", "user-id", players[0].ID)
+		}
+		if players[0].Nickname != "user-nickname" {
+			t.Errorf("expected nickname %s but got %s", "user-nickname", players[0].Nickname)
+		}
+
+		if players[0].State != "inactive" {
+			t.Errorf("expected player state %s but got %s", "inactive", players[0].State)
+		}
+
+		if players[0].JoinedAt.Compare(now) != 1 {
+			t.Errorf("expected joined_at after %v but got %v", now, players[0].JoinedAt)
+		}
+
 	})
 	t.Run("GetPlayers", func(t *testing.T) {
 		cleanupDB()
@@ -401,6 +457,9 @@ func TestGameRepository(t *testing.T) {
 		if players[0].JoinedAt.Compare(now) != 1 {
 			t.Errorf("expected joined_at after %v but got %v", now, players[0].JoinedAt)
 		}
+		if players[0].State != "active" {
+			t.Errorf("expected state %s but got %s", "active", players[0].State)
+		}
 
 		// second player
 		if players[1].ID != "user-id-2" {
@@ -411,6 +470,9 @@ func TestGameRepository(t *testing.T) {
 		}
 		if players[1].JoinedAt.Compare(now) != 1 {
 			t.Errorf("expected joined_at after %v but got %v", now, players[1].JoinedAt)
+		}
+		if players[1].State != "active" {
+			t.Errorf("expected state %s but got %s", "active", players[1].State)
 		}
 	})
 	t.Run("SendMessage", func(t *testing.T) {

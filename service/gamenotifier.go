@@ -7,6 +7,7 @@ import (
 type GameNotifier interface {
 	Pub(gameID string, userID string, notif GameNotification)
 	Sub(gameID string, userID string) chan GameNotification
+	Subs(gameID string) []string
 	Unsub(userID string)
 }
 
@@ -23,6 +24,19 @@ type gameSub struct {
 }
 type gameNotifier struct {
 	subs []gameSub
+}
+
+func (gn *gameNotifier) Subs(gameID string) []string {
+	subs := []string{}
+
+	for _, sub := range gn.subs {
+		if sub.GameID != gameID {
+			continue
+		}
+		subs = append(subs, sub.UserID)
+	}
+
+	return subs
 }
 
 func NewGameNotifier() GameNotifier {
@@ -44,6 +58,7 @@ func (gn *gameNotifier) Sub(gameID string, userID string) chan GameNotification 
 	return ch
 }
 
+// TODO: test this shit so you don't make this kind of errors
 func (gn *gameNotifier) Unsub(userID string) {
 	newSubs := []gameSub{}
 	for _, s := range gn.subs {
@@ -52,6 +67,7 @@ func (gn *gameNotifier) Unsub(userID string) {
 		}
 		newSubs = append(newSubs, s)
 	}
+	gn.subs = newSubs
 }
 
 func (gn *gameNotifier) Pub(gameID string, userID string, notif GameNotification) {

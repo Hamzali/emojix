@@ -109,3 +109,10 @@ As a last snapshot currently I have a solid way to test usecases, repositories a
 As for the features, I have introduced the new realtime notification for player joining to a room, it was quite simple but during this I figured a new way to close SSE realtime channels via context. I have used current request's context done channel to close a channel. However, I am still not sure about not closing unused channels but I am planning to learn more when I try to scale the application. Also we have no ping funciton anymore for realtime channels thanks to context.
 
 My current next goal is introducing the idea of active/inactive for users and kick them out if they have been inactive for a period of time. Another important technical point is that I might need to introduce HTMX to the system in order to make emojix reactive so it won't require any hard refresh on pages.
+
+
+# Sun Dec 21 04:05:55 +03 2025
+
+I am progressing on realtime events while embracing TDD approach of development. This time I have implemented the leave and auto kick inactive users, only thing left is firing leave event to make it truly realtime. Logic is pretty simple, if a user is disconnected wait for a period of time and check if they are still disconnected and if they are mark them as inactive which soft deletest the player from the game. I have learnt more about channels and sending messages are blocking also now understand buffered channels and why they exist but I still don't need them. Another thing I have discovered is using channels for syncronization, I have used in tests. Also as a side note, while testing the feature only place I got error was the only piece I didn't write tests for.
+
+Next time I will work on rejoin logic with the new player state also improve the testing of usecase and service module tidy up a little bit in order ot enjoy more working on the project. I really love this session in particular because steps were so clear which test to write and then proceed the implementation.

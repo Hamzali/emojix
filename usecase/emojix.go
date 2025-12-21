@@ -27,6 +27,7 @@ type EmojixUsecase interface {
 	Message(ctx context.Context, gameID string, userID string, word string) error
 	GameState(ctx context.Context, gameID string, userID string) (model.GameState, error)
 	GameUpdates(ctx context.Context, gameID string, userID string, handler GameUpdateHandler) error
+	KickInactiveUser(ctx context.Context, gameID, userID string) error
 }
 
 func NewEmojixUsecase(
@@ -65,11 +66,20 @@ func (e *emojixUsecase) GameUpdates(ctx context.Context, gameID string, userID s
 				return err
 			}
 		case <-ctx.Done():
-			log.Println("closed the request cleaning up")
 			e.gameNotifier.Unsub(userID)
 			return nil
 		}
 	}
+}
+
+func (e *emojixUsecase) KickInactiveUser(ctx context.Context, gameID, userID string) error {
+	activePlayers := e.gameNotifier.Subs(gameID)
+	if slices.Contains(activePlayers, userID) {
+		return nil
+	}
+	err := e.gameRepo.SetPlayerState(ctx, gameID, userID, model.InactivePlayerState)
+	// TODO: publish the game leave event
+	return err
 }
 
 func maskContent(content string, word string, currUserID string, senderUserID string, guessedWord bool) string {
@@ -88,7 +98,16 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 		return gameState, err
 	}
 
-	hasPlayer := slices.ContainsFunc(players, func(p model.Player) bool {
+	activePlayers := []model.Player{}
+	for _, p := range players {
+		if p.State == model.InactivePlayerState {
+			continue
+		}
+
+		activePlayers = append(activePlayers, p)
+	}
+
+	hasPlayer := slices.ContainsFunc(activePlayers, func(p model.Player) bool {
 		return p.ID == currentUserID
 	})
 
@@ -133,7 +152,7 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 	}
 
 	turnEnded := true
-	for _, player := range players {
+	for _, player := range activePlayers {
 		entry := model.LeaderboardEntry{
 			Nickname:    player.Nickname,
 			Me:          player.ID == currentUserID,
@@ -381,7 +400,7 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 		return err
 	}
 
-	e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{currPlayer.Nickname, content})
+	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{currPlayer.Nickname, content})
 
 	if guessedCount == len(players) {
 		go func() {
@@ -425,7 +444,7 @@ func (e *emojixUsecase) Message(ctx context.Context, gameID string, userID strin
 		return err
 	}
 
-	e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{currPlayer.Nickname, content})
+	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{currPlayer.Nickname, content})
 
 	return nil
 }
