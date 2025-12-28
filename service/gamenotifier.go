@@ -58,7 +58,6 @@ func (gn *gameNotifier) Sub(gameID string, userID string) chan GameNotification 
 	return ch
 }
 
-// TODO: test this shit so you don't make this kind of errors
 func (gn *gameNotifier) Unsub(userID string) {
 	newSubs := []gameSub{}
 	for _, s := range gn.subs {

@@ -298,6 +298,7 @@ func (r *sqliteGameRepository) SendMessage(ctx context.Context, gameID string, t
 	}
 
 	now := time.Now()
+	now = time.UnixMicro(now.UnixMicro())
 	_, err = r.db.ExecContext(
 		ctx,
 		"INSERT INTO messages (id, game_id, turn_id, player_id, content, created_at) VALUES (?, ?, ?, ?, ?, ?)",

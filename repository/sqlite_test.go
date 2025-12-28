@@ -49,6 +49,7 @@ func TestUserRepository(t *testing.T) {
 		cleanupDB()
 
 		now := time.Now()
+		now = time.UnixMicro(now.UnixMicro())
 		_, err := db.Exec("INSERT INTO users (id, nickname, created_at, updated_at) VALUES ('some-id', 'some-nickname', ?, ?);", now.UnixMicro(), now.UnixMicro())
 		if err != nil {
 			t.Fatal(err)
@@ -80,6 +81,7 @@ func TestUserRepository(t *testing.T) {
 		t.Run("Update", func(t *testing.T) {
 			cleanupDB()
 			now := time.Now()
+			now = time.UnixMicro(now.UnixMicro())
 			_, err := db.Exec("INSERT INTO users (id, nickname, created_at, updated_at) VALUES ('some-id', 'some-nickname', ?, ?)", now.UnixMicro(), now.UnixMicro())
 			if err != nil {
 				t.Fatal(err)
@@ -271,6 +273,7 @@ func TestGameRepository(t *testing.T) {
 		cleanupDB()
 
 		now := time.Now()
+		now = time.UnixMicro(now.UnixMicro())
 		_, err := db.Exec("INSERT INTO games (id, created_at, updated_at) VALUES ('game-id', ?, ?);", now.UnixMicro(), now.UnixMicro())
 		if err != nil {
 			t.Fatal(err)

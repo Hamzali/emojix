@@ -72,13 +72,26 @@ func (e *emojixUsecase) GameUpdates(ctx context.Context, gameID string, userID s
 	}
 }
 
+type UserLeftNotification struct {
+	UserID string
+}
+
+func (gmn *UserLeftNotification) GetType() string {
+	return "left"
+}
+
+func (gmn *UserLeftNotification) GetData() string {
+	return fmt.Sprintf("%s", gmn.UserID)
+}
 func (e *emojixUsecase) KickInactiveUser(ctx context.Context, gameID, userID string) error {
 	activePlayers := e.gameNotifier.Subs(gameID)
 	if slices.Contains(activePlayers, userID) {
 		return nil
 	}
 	err := e.gameRepo.SetPlayerState(ctx, gameID, userID, model.InactivePlayerState)
-	// TODO: publish the game leave event
+
+	go e.gameNotifier.Pub(gameID, userID, &UserLeftNotification{userID})
+
 	return err
 }
 

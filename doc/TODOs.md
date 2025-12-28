@@ -6,7 +6,7 @@ game
 - [x] active/inactive player concept
 - [] room capacity depending on the active user not all user registered in.
 - [x] realtime leave game logic on inactivity
-- [] realtime leave event
+- [x] realtime leave event
 - [] realtime rejoin logic
 - [x] realtime join game event
 - [] realtime for turn end when everyone guessed the word
