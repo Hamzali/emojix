@@ -14,6 +14,7 @@ type GameNotifier interface {
 type GameNotification interface {
 	GetType() string
 	GetData() string
+	ParseData(data string) error
 }
 
 type gameSub struct {

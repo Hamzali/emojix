@@ -1,4 +1,5 @@
 {{template "base"}}
+<div hx-ext="sse" sse-connect="/game/{{.GameID}}/sse">
 <button>
 	<a href="/">Home</a>
 </button>
@@ -25,7 +26,7 @@
 	<h2>
 		Leaderboard
 	</h2>
-	<ul>
+	<ul >
 		{{range .Leaderboard}}
 			<li>
 				<span>
@@ -42,13 +43,13 @@
 			</li>
 		{{end}}
 	</ul>
-	<form method="post" action="/game/{{.GameID}}/message">
+	<form hx-post="/game/{{.GameID}}/message" hx-target="#messages" hx-swap="afterbegin">
 		<textarea name="content" placeholder="Write you message here!"></textarea>
 		<button type="submit">
 			Send
 		</button>
 	</form>
-	<form method="post" action="/game/{{.GameID}}/guess">
+	<form hx-post="/game/{{.GameID}}/guess" hx-target="#messages" hx-swap="afterbegin">
 		<textarea name="content" placeholder="Write your guess here!"></textarea>
 		<button type="submit">
 			Send
@@ -57,18 +58,10 @@
 	<h2>
 		Messages
 	</h2>
-	<section id="messages">
+	<section id="messages" sse-swap="msg" hx-swap="afterbegin">
 		{{range .Messages}}
-			<p>
-				<span>{{.Nickname}}</span>
-				{{if .Me}}
-					<strong>{{.Content}}</strong>
-				{{else}}
-					{{.Content}}
-				{{end}}
-			</p>
+			{{template "game-msg" .}}
 		{{end}}
 	</section>
 </div>
-<script src="/static/sse.js">
-</script>
+</div>

@@ -25,6 +25,10 @@ func (gmn *GameJoinNotification) GetData() string {
 	return fmt.Sprintf("%s,%s", gmn.PlayerID, gmn.Nickname)
 }
 
+func (gmn *GameJoinNotification) ParseData(data string) error {
+	return nil
+}
+
 func (e *emojixUsecase) JoinGame(ctx context.Context, gameID string, userID string) error {
 	// TODO: in the future there can be multiple users joined the game but only 10 of them can be active at the same time
 	// this repository call only get full list of players who joined the game, after addign activity logic with realtime features

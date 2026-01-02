@@ -95,6 +95,10 @@ func (e *emojixUsecase) KickInactiveUser(ctx context.Context, gameID, userID str
 	return err
 }
 
+func (gmn *UserLeftNotification) ParseData(data string) error {
+	return nil
+}
+
 func maskContent(content string, word string, currUserID string, senderUserID string, guessedWord bool) string {
 	notSelf := currUserID != senderUserID
 	if strings.EqualFold(word, content) && (notSelf || !guessedWord) {
@@ -295,7 +299,6 @@ func pickGameWord(allWords []model.Word) model.Word {
 func (e *emojixUsecase) InitGame(ctx context.Context, userID string) (model.Game, error) {
 	uow, err := e.unitOfWorkFactory.New(ctx)
 	if err != nil {
-		log.Printf("failed to start unit of work %v\n", err)
 		return model.Game{}, err
 	}
 	defer uow.Rollback()
@@ -320,6 +323,9 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string) (model.Game
 	pickedWord := pickGameWord(allWords)
 
 	err = gameRepo.AddTurn(ctx, game.ID, pickedWord.ID)
+	if err != nil {
+		return model.Game{}, err
+	}
 
 	if err = uow.Commit(); err != nil {
 		return model.Game{}, err
@@ -329,6 +335,7 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string) (model.Game
 }
 
 type GameMsgNotification struct {
+	UserID   string
 	Nickname string
 	Content  string
 }
@@ -338,7 +345,22 @@ func (gmn *GameMsgNotification) GetType() string {
 }
 
 func (gmn *GameMsgNotification) GetData() string {
-	return fmt.Sprintf("%s,%s", gmn.Nickname, gmn.Content)
+	return fmt.Sprintf("%s,%s,%s", gmn.UserID, gmn.Nickname, gmn.Content)
+}
+
+func (gmn *GameMsgNotification) ParseData(data string) error {
+
+	items := strings.Split(data, ",")
+
+	if len(items) != 3 {
+		return errors.New("invalid msg content")
+	}
+
+	gmn.UserID = items[0]
+	gmn.Nickname = items[1]
+	gmn.Content = items[2]
+
+	return nil
 }
 
 func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string, content string) error {
@@ -413,7 +435,7 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 		return err
 	}
 
-	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{currPlayer.Nickname, content})
+	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, content})
 
 	if guessedCount == len(players) {
 		go func() {
@@ -457,7 +479,7 @@ func (e *emojixUsecase) Message(ctx context.Context, gameID string, userID strin
 		return err
 	}
 
-	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{currPlayer.Nickname, content})
+	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, content})
 
 	return nil
 }

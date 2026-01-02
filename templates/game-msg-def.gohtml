@@ -1,0 +1,10 @@
+{{define "game-msg"}}
+<p>
+				<span>{{.Nickname}}</span>
+				{{if .Me}}
+					<strong>{{.Content}}</strong>
+				{{else}}
+					{{.Content}}
+				{{end}}
+			</p>
+{{end}}

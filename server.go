@@ -202,6 +202,11 @@ func (e *webServer) Game(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	if err != nil {
+		e.handleError(w, err, "failed to load game")
+		return
+	}
+
 	pageData := GamePageData{
 		GameID:      gameState.GameID,
 		Leaderboard: gameState.Leaderboard,
@@ -258,8 +263,12 @@ func (e *webServer) Message(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// refresh the page
-	http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusSeeOther)
+	msg := model.GameStateMessage{Me: true, Content: content, Nickname: session.Nickname}
+	err = e.renderTemplate(w, "game-msg.gohtml", &msg)
+	if err != nil {
+		e.handleError(w, err, "failed to render")
+		return
+	}
 }
 
 func (e *webServer) Guess(w http.ResponseWriter, r *http.Request) {
@@ -286,8 +295,12 @@ func (e *webServer) Guess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// refresh the page
-	http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusSeeOther)
+	msg := model.GameStateMessage{Me: true, Content: content, Nickname: session.Nickname}
+	err = e.renderTemplate(w, "game-msg.gohtml", &msg)
+	if err != nil {
+		e.handleError(w, err, "failed to render")
+		return
+	}
 }
 
 func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
@@ -316,7 +329,8 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	sendSseMsg := func(msgType string, content string) error {
-		sseContent := fmt.Sprintf("event: %s\ndata: %s\n\n", msgType, content)
+		safeContent := strings.ReplaceAll(content, "\n", "")
+		sseContent := fmt.Sprintf("event: %s\ndata: %s\n\n", msgType, safeContent)
 		io.WriteString(w, sseContent)
 		err := rc.Flush()
 		return err
@@ -330,12 +344,35 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 	}
 
 	err = e.emojixUsecase.GameUpdates(r.Context(), gameID, userID, func(notifType string, data string) error {
-		err := sendSseMsg(notifType, data)
-		if err != nil {
+		if notifType == "msg" {
+			msgNotif := usecase.GameMsgNotification{}
+
+			err := msgNotif.ParseData(data)
+			if err != nil {
+				return err
+			}
+
+			gameMsg := model.GameStateMessage{
+				Me:       userID == msgNotif.UserID,
+				Nickname: msgNotif.Nickname,
+				Content:  msgNotif.Content,
+			}
+			var sseContent strings.Builder
+			err = e.templates.ExecuteTemplate(&sseContent, "game-msg.gohtml", &gameMsg)
+			if err != nil {
+				return err
+			}
+
+			sseMsg := sseContent.String()
+
+			err = sendSseMsg(notifType, sseMsg)
+
 			return err
 		}
 
-		return nil
+		err := sendSseMsg(notifType, data)
+
+		return err
 	})
 
 	if err != nil {
@@ -351,6 +388,5 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 		if err != nil {
 			log.Println("failed to kick inactive user", err)
 		}
-
 	}()
 }
