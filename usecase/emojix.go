@@ -28,6 +28,8 @@ type EmojixUsecase interface {
 	GameState(ctx context.Context, gameID string, userID string) (model.GameState, error)
 	GameUpdates(ctx context.Context, gameID string, userID string, handler GameUpdateHandler) error
 	KickInactiveUser(ctx context.Context, gameID, userID string) error
+	Leaderboard(ctx context.Context, gameID, userID string) ([]model.LeaderboardEntry, error)
+	GameWord(ctx context.Context, gameID, userID string) (string, error)
 }
 
 func NewEmojixUsecase(
@@ -363,6 +365,23 @@ func (gmn *GameMsgNotification) ParseData(data string) error {
 	return nil
 }
 
+type GameCorrectGuessNotification struct {
+	UserID   string
+	Nickname string
+}
+
+func (gmn *GameCorrectGuessNotification) GetType() string {
+	return "guessed"
+}
+
+func (gmn *GameCorrectGuessNotification) GetData() string {
+	return fmt.Sprintf("%s,%s", gmn.UserID, gmn.Nickname)
+}
+
+func (gmn *GameCorrectGuessNotification) ParseData(data string) error {
+	return nil
+}
+
 func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string, content string) error {
 	currPlayer, err := e.userRepo.FindByID(ctx, userID)
 	if err != nil {
@@ -398,6 +417,7 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 	guessedWord := strings.EqualFold(content, gameWord)
 	if !guessedWord {
 		err = uow.Commit()
+		go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, content})
 		return err
 	}
 
@@ -435,7 +455,8 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 		return err
 	}
 
-	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, content})
+	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, "***"})
+	go e.gameNotifier.Pub(gameID, userID, &GameCorrectGuessNotification{userID, currPlayer.Nickname})
 
 	if guessedCount == len(players) {
 		go func() {
@@ -482,4 +503,100 @@ func (e *emojixUsecase) Message(ctx context.Context, gameID string, userID strin
 	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, content})
 
 	return nil
+}
+
+func (e *emojixUsecase) Leaderboard(ctx context.Context, gameID, currentUserID string) ([]model.LeaderboardEntry, error) {
+	leaderboardEntries := []model.LeaderboardEntry{}
+	players, err := e.gameRepo.GetPlayers(ctx, gameID)
+	if err != nil {
+		return leaderboardEntries, err
+	}
+
+	activePlayers := []model.Player{}
+	for _, p := range players {
+		if p.State == model.InactivePlayerState {
+			continue
+		}
+
+		activePlayers = append(activePlayers, p)
+	}
+
+	hasPlayer := slices.ContainsFunc(activePlayers, func(p model.Player) bool {
+		return p.ID == currentUserID
+	})
+
+	if !hasPlayer {
+		return leaderboardEntries, errors.New("user not in the game")
+	}
+
+	scores, err := e.gameRepo.GetScores(ctx, gameID)
+	if err != nil {
+		return leaderboardEntries, err
+	}
+
+	latestTurn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
+	if err != nil {
+		return leaderboardEntries, err
+	}
+
+	isGuessedWord := func(playerID string) bool {
+		for _, score := range scores {
+			if score.PlayerID == playerID && score.TurnID == latestTurn.ID {
+				return true
+			}
+		}
+		return false
+	}
+
+	scoreMap := map[string]int{}
+	for _, score := range scores {
+		scoreMap[score.PlayerID] += score.Score
+	}
+
+	for _, player := range activePlayers {
+		entry := model.LeaderboardEntry{
+			Nickname:    player.Nickname,
+			Me:          player.ID == currentUserID,
+			GuessedWord: isGuessedWord(player.ID),
+			Score:       scoreMap[player.ID],
+		}
+
+		leaderboardEntries = append(leaderboardEntries, entry)
+	}
+
+	return leaderboardEntries, nil
+}
+
+func (e *emojixUsecase) GameWord(ctx context.Context, gameID, currentUserID string) (string, error) {
+	latestTurn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
+	if err != nil {
+		return "", err
+	}
+
+	word, err := e.wordRepo.FindByID(ctx, latestTurn.WordID)
+	if err != nil {
+		return "", err
+	}
+
+	scores, err := e.gameRepo.GetScores(ctx, gameID)
+	if err != nil {
+		return "", err
+	}
+
+	guessedWord := false
+	for _, score := range scores {
+		if score.PlayerID == currentUserID && score.TurnID == latestTurn.ID {
+			guessedWord = true
+			break
+		}
+	}
+
+	wordMaskRegex := regexp.MustCompile(`\w`)
+	gameWord := word.Word
+
+	if !guessedWord {
+		gameWord = wordMaskRegex.ReplaceAllString(gameWord, "*")
+	}
+
+	return gameWord, nil
 }

@@ -37,6 +37,8 @@ func (e *webServer) Start() {
 	http.HandleFunc("GET /game/{id}/join", e.JoinGame)
 	http.HandleFunc("GET /game/{id}/loading", e.LoadingGame)
 	http.HandleFunc("GET /game/{id}", e.Game)
+	http.HandleFunc("GET /game/{id}/leaderboard", e.Leaderboard)
+	http.HandleFunc("GET /game/{id}/word", e.GameWord)
 	http.HandleFunc("POST /game/{id}/message", e.Message)
 	http.HandleFunc("POST /game/{id}/guess", e.Guess)
 	http.HandleFunc("GET /game/{id}/sse", e.Sse)
@@ -295,10 +297,63 @@ func (e *webServer) Guess(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Hx-Trigger", "guessed")
 	msg := model.GameStateMessage{Me: true, Content: content, Nickname: session.Nickname}
 	err = e.renderTemplate(w, "game-msg.gohtml", &msg)
 	if err != nil {
 		e.handleError(w, err, "failed to render")
+		return
+	}
+}
+
+type LeaderboardPageData struct {
+	Leaderboard []model.LeaderboardEntry
+}
+
+func (e *webServer) Leaderboard(w http.ResponseWriter, r *http.Request) {
+	session, err := e.getSession(w, r)
+	if err != nil {
+		return
+	}
+	gameID := r.PathValue("id")
+	ctx := r.Context()
+
+	leaderboardEntries, err := e.emojixUsecase.Leaderboard(ctx, gameID, session.UserID)
+	if err != nil {
+		e.handleError(w, err, "failed to fetch leaderboard")
+		return
+	}
+
+	pageData := LeaderboardPageData{leaderboardEntries}
+	err = e.renderTemplate(w, "leaderboard.gohtml", &pageData)
+	if err != nil {
+		e.handleError(w, err, "failed to render leaderboard")
+		return
+	}
+}
+
+type GameWordTemplateData struct {
+	MaskedWord []string
+}
+
+func (e *webServer) GameWord(w http.ResponseWriter, r *http.Request) {
+	session, err := e.getSession(w, r)
+	if err != nil {
+		return
+	}
+	gameID := r.PathValue("id")
+	ctx := r.Context()
+
+	gameWord, err := e.emojixUsecase.GameWord(ctx, gameID, session.UserID)
+	if err != nil {
+		e.handleError(w, err, "failed to fetch word")
+		return
+	}
+
+	pageData := GameWordTemplateData{strings.Split(gameWord, "")}
+	err = e.renderTemplate(w, "game-word.gohtml", &pageData)
+	if err != nil {
+		e.handleError(w, err, "failed to render word")
 		return
 	}
 }
@@ -381,7 +436,8 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 
 	go func() {
 		// TODO: experiment and find a better wait amount
-		time.Sleep(time.Second * 5)
+		// NOTE: should be higher than the turn start wait time
+		time.Sleep(time.Second * 30)
 
 		ctx := context.Background()
 		err := e.emojixUsecase.KickInactiveUser(ctx, gameID, userID)

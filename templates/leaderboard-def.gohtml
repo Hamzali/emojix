@@ -1,0 +1,19 @@
+{{define "leaderboard"}}
+	<ul>
+		{{range .Leaderboard}}
+			<li>
+				<span>
+				{{if .Me}}
+					<strong>{{.Nickname}}</strong>
+				{{else}}
+					{{.Nickname}}
+				{{end}}
+				</span>
+				{{if .GuessedWord}}
+					<span>✅</span>
+				{{end}}
+				<span>{{.Score}}</span>
+			</li>
+		{{end}}
+	</ul>
+{{end}}
