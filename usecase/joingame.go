@@ -2,9 +2,9 @@ package usecase
 
 import (
 	"context"
+	"emojix/model"
 	"errors"
 	"fmt"
-	"log"
 )
 
 var maxRoomCapacity = 10
@@ -43,29 +43,39 @@ func (e *emojixUsecase) JoinGame(ctx context.Context, gameID string, userID stri
 		return err
 	}
 
+	activePlayers := []model.Player{}
+	prevInactiveUser := false
 	for _, p := range players {
-		if p.ID == player.ID {
+		if p.State == model.ActivePlayerState {
+			activePlayers = append(activePlayers, p)
+		}
+
+		if p.ID == player.ID && p.State == model.InactivePlayerState {
+			prevInactiveUser = true
+		}
+		if p.ID == player.ID && p.State == model.ActivePlayerState {
 			return ErrJoinGameUserAlreadyJoined
 		}
 	}
 
-	if len(players) >= maxRoomCapacity {
+	if len(activePlayers) >= maxRoomCapacity {
 		return ErrJoinGameRoomFull
 	}
 
-	err = e.gameRepo.AddPlayer(ctx, gameID, player.ID)
+	if prevInactiveUser {
+		err = e.gameRepo.SetPlayerState(ctx, gameID, player.ID, model.ActivePlayerState)
+	} else {
+		err = e.gameRepo.AddPlayer(ctx, gameID, player.ID)
+	}
+
 	if err != nil {
 		return err
 	}
-
-	log.Println("added player")
 
 	go e.gameNotifier.Pub(gameID, player.ID, &GameJoinNotification{
 		Nickname: player.Nickname,
 		PlayerID: player.ID,
 	})
-
-	log.Println("why are we waiting")
 
 	return nil
 }

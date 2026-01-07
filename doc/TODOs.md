@@ -4,8 +4,8 @@
 
 game
 - [x] introduce guessed event for realtime update of guess word if the user guessed (remove the mask)
-- [] realtime for turn end when everyone guessed the word
-- [] when a user is kicked and flagged as inactive, have a logic to rejoin the user, reuse the record and mutate back to active if there is space in the game
+- [x] realtime for turn end when everyone guessed the word
+- [x] when a user is kicked and flagged as inactive, have a logic to rejoin the user, reuse the record and mutate back to active if there is space in the game
 
 techdebt
 - [] find a way to have one way to fetch leaderboard info, currently code is duplicated for Leaderboard and GameState
