@@ -6,6 +6,7 @@ import (
 
 type GameNotifier interface {
 	Pub(gameID string, userID string, notif GameNotification)
+	PubAll(gameID string, notif GameNotification)
 	Sub(gameID string, userID string) chan GameNotification
 	Subs(gameID string) []string
 	Unsub(userID string)
@@ -73,6 +74,16 @@ func (gn *gameNotifier) Unsub(userID string) {
 func (gn *gameNotifier) Pub(gameID string, userID string, notif GameNotification) {
 	for _, s := range gn.subs {
 		if s.GameID != gameID || s.UserID == userID {
+			continue
+		}
+
+		s.NotifChan <- notif
+	}
+}
+
+func (gn *gameNotifier) PubAll(gameID string, notif GameNotification) {
+	for _, s := range gn.subs {
+		if s.GameID != gameID {
 			continue
 		}
 

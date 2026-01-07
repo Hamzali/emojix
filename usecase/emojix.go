@@ -382,6 +382,21 @@ func (gmn *GameCorrectGuessNotification) ParseData(data string) error {
 	return nil
 }
 
+type GameTurnEndNotification struct {
+}
+
+func (gmn *GameTurnEndNotification) GetType() string {
+	return "turnended"
+}
+
+func (gmn *GameTurnEndNotification) GetData() string {
+	return ""
+}
+
+func (gmn *GameTurnEndNotification) ParseData(data string) error {
+	return nil
+}
+
 func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string, content string) error {
 	currPlayer, err := e.userRepo.FindByID(ctx, userID)
 	if err != nil {
@@ -459,6 +474,7 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 	go e.gameNotifier.Pub(gameID, userID, &GameCorrectGuessNotification{userID, currPlayer.Nickname})
 
 	if guessedCount == len(players) {
+		go e.gameNotifier.PubAll(gameID, &GameTurnEndNotification{})
 		go func() {
 			time.Sleep(5 * time.Second)
 			err := e.newGameTurn(context.Background(), gameID)

@@ -49,4 +49,8 @@
 			{{end}}
 		</section>
 	</div>
+	<div hx-trigger="sse:turnended"/>
+	<script>
+		document.body.addEventListener("sse:turnended", (event) => { location.reload() });
+	</script>
 </div>
