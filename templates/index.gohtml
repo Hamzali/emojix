@@ -1,13 +1,29 @@
 {{template "base"}}
+
+<div class="landing root">
+<header class="landing header">
 <h1>
 	EMOJIX
 </h1>
+
+<h2>
+	Type, Guess, and Have Fun
+</h2>
+</header>
+
+<content class="landing content">
+<img class="landing.hero" src="https://picsum.photos/300/300"/>
+<div class="card">
+<!--
 <form method="post" action="/nickname">
 	<input name="nickname" value="{{.Nickname}}" />
 	<button type="submit">
 		Update
 	</button>
 </form>
+-->
+
+<h2>Welcome, <em>{{.Nickname}}</em></h2>
 <form method="post" action="/game/new">
 	<button type="submit">
 		New Game
@@ -20,3 +36,10 @@
 		Join Game
 	</button>
 </form>
+</div>
+</content>
+
+<footer class="landing footer">
+links and some other content
+</footer>
+</div>

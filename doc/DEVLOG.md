@@ -121,3 +121,25 @@ Next time I will work on rejoin logic with the new player state also improve the
 # Fri Jan  2 12:21:33 PM +03 2026
 
 Finally I have decided that I need real interactivity and went with htmx to partially update the pages without needing to refresh and also now I am sending html over sse. I need to update how I initialize and verify users because I had an annoying bug when I reset the database but users got stuck in browser cookies then game creation is broken, it was quite annoying to find the bug and tests didn't help at all :( I am planning to make leaderboard refreshes and updates on realtime like messages and guesses, my initial plan is refreshing all when receiving a related update like join, leave, guess and so on. Don't want to surgically update the html fields. On the other hand removing a single user from the leaderboard is better techically but refreshing whole list is more pragmatic since the leaderboard would not update frequent as the messages. I need to implement other events parse data method and handle.
+
+# Thu Jan  8 02:12:44 +03 2026
+
+I am happy today, because, from now on I have a base working realtime game which I can focus on making it look better and streamline design and css. It is not perfect as it should be and first thing after completing the designs I need to change how game page works. Currently game page loads everything in one go and returns to client however due to nature of the game page it has three main sections that updates relatime which are leaderboard, messages adn word/turn information. If I split these and render lazy way it would make both code and ui better since every section will be its own problem and will not effect other parts when it needs to evolve for its requirements. for example, messages and leaderboards should not be coupled together because messages requires append only updates while leaderboard needs full refreshes. Other benefit is that user experience will be better because even turn changes can be done without refreshing whole page.
+
+About general desing principle would be focus on mobile and tablet devices also will enable PWA features and make it feel like a mobile app as possible. Planning to first write out page requirements then design it via google stich ai since we get HTML + Tailwindcss, we can directly inject into templates.
+
+Today I have learnt how HTMX SSE internals work, while trying to refresh the page upon receiving turn end event from SSE. Firs I tried to figure out using AI but all the options were not optimal also some of them were misleading therfore I fallback to good old source reading and figured out how to listen programatically the sse events. Also using tests for usecases felt really good and one shotted a feature with TDD without having to test manually. This also signals that as soon as possible I need to complete the tests for usecase layer and slowly start writing E2E tests in order to speed up my development cycles without breaking old features.
+
+# Mon Jan 19 03:10:30 +03 2026
+
+I have started to apply styles and other required items to be an solid web application and suffice web standards. I have started following the MDN tutorials in order to better undestand HTML and CSS. What I have learnt some new details about CSS for example pseudo elements selector which are lets you select part of the selected element. Also found a guy named Josh Comeau, who is teaching CSS online and I really liked his approach to reset CSS. Since I am building a web game application to be specific, I have decided to go with plain CSS which also aligns the idea of no dependency. I have completed and just started the landing page. Planning to have a hero image, Headline with a sub headline and lastly possible actions. I will go as fast as I can for the initial round of styling and after completion I will have a polish round both from code and visual perspective. Next time I will focus on specif ui elements and how to design them for example buttons, inputs and footer.
+
+I need a mascot for the game what can be a mascot for such a game. I have possible key ideas to decide what the mascot will be;
+- It can be a animal that I like and fits to playful aspect of gaming
+- It can be some emoji or a shapeshifter of emojis
+- It can be a humanoid character(s)
+
+What I need from the mascot are following;
+- Likable by kids and grown ups
+- Should be able express emotion through out the game. For example when time is running out it should be able express this urgency emotion or accomplishment emotion when guessed right.
+- Should be able to communicate a brand even if there are more than one mascots.
