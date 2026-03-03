@@ -1,19 +1,21 @@
 {{template "base"}}
 
-<div class="landing root">
-<header class="landing header">
-<h1>
+<div class="landing_root">
+<header class="landing_header">
+<h1 class="brand-title">
 	EMOJIX
 </h1>
-
-<h2>
-	Type, Guess, and Have Fun
-</h2>
+<p>pick, tell, guess</p>
 </header>
 
-<content class="landing content">
-<img class="landing.hero" src="https://picsum.photos/300/300"/>
-<div class="card">
+<content class="landing_content">
+<div class="window">
+
+<div class="bar"> Welcome, <em>{{.Nickname}}</em></div>
+
+<div class="window-content">
+<div class="landing_form">
+
 <!--
 <form method="post" action="/nickname">
 	<input name="nickname" value="{{.Nickname}}" />
@@ -23,23 +25,27 @@
 </form>
 -->
 
-<h2>Welcome, <em>{{.Nickname}}</em></h2>
 <form method="post" action="/game/new">
 	<button type="submit">
 		New Game
 	</button>
 </form>
 
-<form method="get" action="/game/join">
+<h2>OR</h2>
+
+<form method="get" action="/game/join" class="landing_join-form">
     <input name="game-id" value="123" />
 	<button type="submit">
 		Join Game
 	</button>
 </form>
+
+</div>
+</div>
 </div>
 </content>
 
-<footer class="landing footer">
-links and some other content
+<footer class="landing_footer">
+created by <a href="http://tha.sh">thash</a>
 </footer>
 </div>
