@@ -1,4 +1,4 @@
-{{template "base"}}
+{{define "base"}}
 <div hx-ext="sse" sse-connect="/game/{{.GameID}}/sse">
 	<button>
 		<a href="/">Home</a>
@@ -54,3 +54,4 @@
 		document.body.addEventListener("sse:turnended", (event) => { location.reload() });
 	</script>
 </div>
+{{end}}

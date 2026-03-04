@@ -5,7 +5,6 @@ import (
 	"emojix/model"
 	"emojix/usecase"
 	"fmt"
-	"html/template"
 	"io"
 	"log"
 	"net/http"
@@ -18,14 +17,13 @@ type EmojixServer interface {
 }
 
 type webServer struct {
-	templates     template.Template
+	view          View
 	emojixUsecase usecase.EmojixUsecase
 }
 
-func NewWebServer(emojixUsecase usecase.EmojixUsecase) (EmojixServer, error) {
-	templates := *template.Must(template.ParseGlob("templates/*.gohtml"))
+func NewWebServer(emojixUsecase usecase.EmojixUsecase, view View) (EmojixServer, error) {
 	return &webServer{
-		templates,
+		view,
 		emojixUsecase,
 	}, nil
 }
@@ -47,24 +45,10 @@ func (e *webServer) Start() {
 	log.Fatal(http.ListenAndServe(":9000", nil))
 }
 
-func (e *webServer) renderTemplate(w http.ResponseWriter, name string, p any) error {
-	err := e.templates.ExecuteTemplate(w, name, p)
-	if err != nil {
-		return err
-	}
-
-	return nil
-}
-
 func (e *webServer) handleError(w http.ResponseWriter, err error, msg string) {
 	log.Printf("%s: %v\n", msg, err)
 	w.WriteHeader(http.StatusInternalServerError)
-	_ = e.renderTemplate(w, "error.gohtml", nil)
-}
-
-type IndexPageData struct {
-	Title    string
-	Nickname string
+	_ = e.view.renderErrorPage(w)
 }
 
 const userIdCookieKey = "userid"
@@ -133,7 +117,7 @@ func (e *webServer) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = e.renderTemplate(w, "index.gohtml", IndexPageData{Title: "Emojix!", Nickname: session.Nickname})
+	err = e.view.renderIndexPage(w, IndexPageViewParam{Title: "Emojix!", Nickname: session.Nickname})
 	if err != nil {
 		e.handleError(w, err, "failed to render template")
 		return
@@ -209,14 +193,14 @@ func (e *webServer) Game(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pageData := GamePageData{
+	pageData := GamePageViewParam{
 		GameID:      gameState.GameID,
 		Leaderboard: gameState.Leaderboard,
 		Messages:    gameState.Messages,
 		MaskedWord:  strings.Split(gameState.Word, ""),
 		EmojiHint:   gameState.Hint,
 	}
-	err = e.renderTemplate(w, "game.gohtml", &pageData)
+	err = e.view.renderGamePage(w, pageData)
 	if err != nil {
 		e.handleError(w, err, "failed to render page")
 		return
@@ -232,8 +216,7 @@ func (e *webServer) LoadingGame(w http.ResponseWriter, r *http.Request) {
 	// using the session id and game id information.
 	gameID := r.PathValue("id")
 
-	pageData := GameLoadingPageData{GameID: gameID}
-	err := e.renderTemplate(w, "loading-game.gohtml", &pageData)
+	err := e.view.renderGameLoadingPage(w, GameLoadingPageViewParam{GameID: gameID})
 	if err != nil {
 		e.handleError(w, err, "failed to render page")
 		return
@@ -266,7 +249,7 @@ func (e *webServer) Message(w http.ResponseWriter, r *http.Request) {
 	}
 
 	msg := model.GameStateMessage{Me: true, Content: content, Nickname: session.Nickname}
-	err = e.renderTemplate(w, "game-msg.gohtml", &msg)
+	err = e.view.renderGameMsg(w, msg)
 	if err != nil {
 		e.handleError(w, err, "failed to render")
 		return
@@ -299,15 +282,11 @@ func (e *webServer) Guess(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Hx-Trigger", "guessed")
 	msg := model.GameStateMessage{Me: true, Content: content, Nickname: session.Nickname}
-	err = e.renderTemplate(w, "game-msg.gohtml", &msg)
+	err = e.view.renderGameMsg(w, msg)
 	if err != nil {
 		e.handleError(w, err, "failed to render")
 		return
 	}
-}
-
-type LeaderboardPageData struct {
-	Leaderboard []model.LeaderboardEntry
 }
 
 func (e *webServer) Leaderboard(w http.ResponseWriter, r *http.Request) {
@@ -324,16 +303,12 @@ func (e *webServer) Leaderboard(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pageData := LeaderboardPageData{leaderboardEntries}
-	err = e.renderTemplate(w, "leaderboard.gohtml", &pageData)
+	vieaParam := GameLeaderboardViewParam{leaderboardEntries}
+	err = e.view.renderGameLeaderboard(w, vieaParam)
 	if err != nil {
 		e.handleError(w, err, "failed to render leaderboard")
 		return
 	}
-}
-
-type GameWordTemplateData struct {
-	MaskedWord []string
 }
 
 func (e *webServer) GameWord(w http.ResponseWriter, r *http.Request) {
@@ -350,8 +325,8 @@ func (e *webServer) GameWord(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	pageData := GameWordTemplateData{strings.Split(gameWord, "")}
-	err = e.renderTemplate(w, "game-word.gohtml", &pageData)
+	pageParam := GameWordViewParam{strings.Split(gameWord, "")}
+	err = e.view.renderGameWord(w, pageParam)
 	if err != nil {
 		e.handleError(w, err, "failed to render word")
 		return
@@ -413,7 +388,7 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 				Content:  msgNotif.Content,
 			}
 			var sseContent strings.Builder
-			err = e.templates.ExecuteTemplate(&sseContent, "game-msg.gohtml", &gameMsg)
+			err = e.view.renderGameMsg(&sseContent, gameMsg)
 			if err != nil {
 				return err
 			}

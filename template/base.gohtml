@@ -1,4 +1,3 @@
-{{define "base"}}
 	<!DOCTYPE html>
 	<html lang="en">
 	<head>
@@ -10,9 +9,9 @@
 	<meta name="author" content="Hamza A. Tas" />
 	<meta name="description" content="A multiplayer emoji based charades game" />
 
-	<link rel="apple-touch-icon" sizes="180x180" href="static/assets/favicon/apple-touch-icon.png"/>
-	<link rel="icon" type="image/png" sizes="32x32" href="static/assets/favicon/favicon-32x32.png"/>
-	<link rel="icon" type="image/png" sizes="16x16" href="static/assets/favicon/favicon-16x16.png"/>
+	<link rel="apple-touch-icon" sizes="180x180" href="static/asset/favicon/apple-touch-icon.png"/>
+	<link rel="icon" type="image/png" sizes="32x32" href="static/asset/favicon/favicon-32x32.png"/>
+	<link rel="icon" type="image/png" sizes="16x16" href="static/asset/favicon/favicon-16x16.png"/>
 	<link rel="manifest" href="static/site.webmanifest"/>
 
 	<script src="https://cdn.jsdelivr.net/npm/htmx.org@2.0.8/dist/htmx.min.js" integrity="sha384-/TgkGk7p307TH7EXJDuUlgG3Ce1UVolAOFopFekQkkXihi5u/6OCvVKyz1W+idaz" crossorigin="anonymous">
@@ -28,7 +27,6 @@
 	<link rel="stylesheet" href="static/style/index.css"/>
 	</head>
 	<body hx-ext="sse">
-	{{.}}
+	{{template "base" .}}
 	</body>
 	</html>
-{{end}}
