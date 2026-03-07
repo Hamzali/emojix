@@ -1,0 +1,123 @@
+:root {
+  --text-primary: #1f2937;
+  --color-shadow: #2d2a2e;
+
+  /* Background & Canvas */
+  --bg-desktop: #e5e1d8;
+  /* The muted grey-purple background */
+  --bg-window: #f1e7d0;
+  /* The warm cream window body */
+
+  /* Primary Accents */
+  --ui-orange: #f28d54;
+  /* Primary buttons, progress bars, folders */
+  --ui-blue: #3a8fb7;
+  /* Title bars, globe icon, links */
+  --ui-yellow: #f8c84d;
+  /* Folder accents, search bars */
+  --ui-red: #e85a4f;
+  /* Error icons, close buttons */
+  --ui-pink: #f4a7b9;
+  /* Chat bubbles, heart icons */
+
+  /* Borders & Shadows */
+  --stroke-black: #1a1a1b;
+  /* The heavy 2px outline */
+
+  /* Status Colors */
+  --status-green: #a5d6a7;
+  /* For that "Happy Computer" face */
+
+  --radius: 0.5rem;
+  --radius-xl: 1.5rem;
+
+  --space-1: 0.5rem;
+  --space-2: 1rem;
+  --space-3: 1.5rem;
+
+  --size-sm: 32rem;
+  --size-md: 64rem;
+}
+
+html {
+  font-size: 24px;
+  font-family: "Nunito", sans-serif;
+}
+
+html,
+body {
+  height: 100%;
+  background-color: var(--ui-orange);
+}
+
+h1,
+h2 {
+  font-family: "Fredoka", sans-serif;
+}
+
+p {
+  font-family: "Nunito", sans-serif;
+  font-size: 1rem;
+  color: var(--text-primary);
+}
+
+h1 {
+  font-size: 5rem;
+  text-transform: uppercase;
+  font-weight: bold;
+  color: var(--text-primary);
+}
+
+h2 {
+  font-size: 2.5rem;
+  text-transform: capitalize;
+  color: var(--text-primary);
+}
+
+button {
+  border: solid;
+  border-color: var(--color-shadow);
+  border-radius: 0.2rem;
+  border-width: 0.1rem;
+  padding: var(--space-1) var(--space-2);
+  font-weight: bold;
+  background-color: var(--ui-orange);
+  cursor: pointer;
+
+  box-shadow: -5px 5px var(--color-shadow);
+  transition: all 300ms;
+}
+
+button:hover {
+  box-shadow: -3px 3px var(--color-shadow);
+}
+
+input {
+  border-style: solid;
+  border-color: var(--color-shadow);
+  border-width: 0.2rem;
+  border-radius: var(--radius);
+  padding: var(--space-1);
+}
+
+.bar {
+  background-color: var(--ui-blue);
+  border-bottom: 3px solid var(--stroke-black);
+  padding: 8px;
+  color: white;
+}
+
+.window {
+  background-color: var(--bg-window);
+  border: 3px solid var(--stroke-black);
+  box-shadow: -6px 6px 0px var(--color-shadow);
+  border-radius: 4px;
+}
+
+.window-content {
+  padding: var(--space-2);
+}
+
+.brand-title {
+  font-size: 3rem;
+}

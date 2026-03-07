@@ -1,32 +1,27 @@
+{{ define "styles" }}
+  <link rel="stylesheet" href="/static/style/index.css" />
+{{ end }}
+
 {{ define "base" }}
-  <div class="landing_root">
-    <header class="landing_header">
+  <div class="root">
+    <header class="header">
       <h1 class="brand-title">EMOJIX</h1>
       <p>pick, tell, guess</p>
     </header>
 
-    <content class="landing_content">
+    <content class="content">
       <div class="window">
         <div class="bar">Welcome, <em>{{ .Nickname }}</em></div>
 
         <div class="window-content">
-          <div class="landing_form">
-            <!--
-<form method="post" action="/nickname">
-	<input name="nickname" value="{{ .Nickname }}" />
-	<button type="submit">
-		Update
-	</button>
-</form>
--->
-
+          <div class="form">
             <form method="post" action="/game/new">
               <button type="submit">New Game</button>
             </form>
 
             <h2>OR</h2>
 
-            <form method="get" action="/game/join" class="landing_join-form">
+            <form method="get" action="/game/join" class="join-form">
               <input name="game-id" value="123" />
               <button type="submit">Join Game</button>
             </form>
@@ -35,7 +30,7 @@
       </div>
     </content>
 
-    <footer class="landing_footer">
+    <footer class="footer">
       created by <a href="http://tha.sh">thash</a>
     </footer>
   </div>
