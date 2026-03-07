@@ -162,15 +162,6 @@ func (e *webServer) NewGame(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/game/%s", game.ID), http.StatusSeeOther)
 }
 
-type GamePageData struct {
-	GameID      string
-	Leaderboard []model.LeaderboardEntry
-	Messages    []model.GameStateMessage
-
-	MaskedWord []string
-	EmojiHint  string
-}
-
 func (e *webServer) Game(w http.ResponseWriter, r *http.Request) {
 	session, err := e.getSession(w, r)
 	if err != nil {

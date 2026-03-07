@@ -127,7 +127,7 @@ input {
 }
 
 
-/* page specific styles */
+/* INDEX PAGE */
 .landing_root {
 	height: 100%;
 	display: flex;
@@ -176,3 +176,6 @@ input {
 	text-align: center;
 	padding: var(--space-1) var(--space-2);
 }
+
+
+/* GAME PAGE */
