@@ -1,57 +1,66 @@
-{{define "base"}}
-<div hx-ext="sse" sse-connect="/game/{{.GameID}}/sse">
-	<button>
-		<a href="/">Home</a>
-	</button>
-	<button onclick="navigator.clipboard.writeText('{{.GameID}}');alert('copied to clipboard');">
-		Copy GameID
-	</button>
-	<h1>
-		Game Page
-	</h1>
-	<h2>
-		Word
-	</h2>
-	<div hx-get="/game/{{.GameID}}/word" hx-trigger="guessed from:body">
-		{{template "game-word" .}}
-	</div>
-	<h2>
-		Emoji Hint
-	</h2>
-	<p style="font-size: 2rem;">
-		{{.EmojiHint}}
-	</p>
-	<div>
-		<h2>
-			Leaderboard
-		</h2>
-		<section hx-get="/game/{{.GameID}}/leaderboard" hx-trigger="sse:left,sse:join,sse:guessed,guessed from:body">
-			{{template "leaderboard" .}}
-		</section>
-		<form hx-post="/game/{{.GameID}}/message" hx-target="#messages" hx-swap="afterbegin" hx-on:htmx:after-request="event.target.reset()">
-			<textarea name="content" placeholder="Write you message here!"></textarea>
-			<button type="submit">
-				Send
-			</button>
-		</form>
-		<form hx-post="/game/{{.GameID}}/guess" hx-target="#messages" hx-swap="afterbegin" hx-on:htmx:after-request="event.target.reset()">
-			<textarea name="content" placeholder="Write your guess here!"></textarea>
-			<button type="submit">
-				Send
-			</button>
-		</form>
-		<h2>
-			Messages
-		</h2>
-		<section id="messages" sse-swap="msg" hx-swap="afterbegin">
-			{{range .Messages}}
-				{{template "game-msg" .}}
-			{{end}}
-		</section>
-	</div>
-	<div hx-trigger="sse:turnended"/>
-	<script>
-		document.body.addEventListener("sse:turnended", (event) => { location.reload() });
-	</script>
-</div>
-{{end}}
+{{ define "base" }}
+  <div hx-ext="sse" sse-connect="/game/{{ .GameID }}/sse">
+    <button>
+      <a href="/">Home</a>
+    </button>
+    <button
+      onclick="navigator.clipboard.writeText('{{ .GameID }}');alert('copied to clipboard');"
+    >
+      Copy GameID
+    </button>
+    <h1>Game Page</h1>
+    <h2>Word</h2>
+    <div hx-get="/game/{{ .GameID }}/word" hx-trigger="guessed from:body">
+      {{ template "game-word" . }}
+    </div>
+    <h2>Emoji Hint</h2>
+    <p style="font-size: 2rem;">
+      {{ .EmojiHint }}
+    </p>
+    <div>
+      <h2>Leaderboard</h2>
+      <section
+        hx-get="/game/{{ .GameID }}/leaderboard"
+        hx-trigger="sse:left,sse:join,sse:guessed,guessed from:body"
+      >
+        {{ template "leaderboard" . }}
+      </section>
+      <form
+        hx-post="/game/{{ .GameID }}/message"
+        hx-target="#messages"
+        hx-swap="afterbegin"
+        hx-on:htmx:after-request="event.target.reset()"
+      >
+        <textarea
+          name="content"
+          placeholder="Write you message here!"
+        ></textarea>
+        <button type="submit">Send</button>
+      </form>
+      <form
+        hx-post="/game/{{ .GameID }}/guess"
+        hx-target="#messages"
+        hx-swap="afterbegin"
+        hx-on:htmx:after-request="event.target.reset()"
+      >
+        <textarea
+          name="content"
+          placeholder="Write your guess here!"
+        ></textarea>
+        <button type="submit">Send</button>
+      </form>
+      <h2>Messages</h2>
+      <section id="messages" sse-swap="msg" hx-swap="afterbegin">
+        {{ range .Messages }}
+          {{ template "game-msg" . }}
+        {{ end }}
+      </section>
+    </div>
+    <div hx-trigger="sse:turnended" />
+    <script>
+      document.body.addEventListener("sse:turnended", (event) => {
+        location.reload();
+      });
+    </script>
+  </div>
+{{ end }}

@@ -1,14 +1,10 @@
-{{define "base"}}
+{{ define "base" }}
+  <h1>Loading Game Turn...</h1>
+  <h2 id="counter">5</h2>
 
-
-<h1>Loading Game Turn...</h1>
-<h2 id="counter">5</h1>
-
-
-<a href="/game/{{.GameID}}">
-	<button>Refresh</button>
-</a>
-
+  <a href="/game/{{ .GameID }}">
+    <button>Refresh</button>
+  </a>
 
 <script>
 	function updateCounter() {
@@ -31,4 +27,4 @@
 
 	updateCounter()
 </script>
-{{end}}
+{{ end }}

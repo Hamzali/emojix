@@ -1,51 +1,42 @@
-{{define "base"}}
-<div class="landing_root">
-<header class="landing_header">
-<h1 class="brand-title">
-	EMOJIX
-</h1>
-<p>pick, tell, guess</p>
-</header>
+{{ define "base" }}
+  <div class="landing_root">
+    <header class="landing_header">
+      <h1 class="brand-title">EMOJIX</h1>
+      <p>pick, tell, guess</p>
+    </header>
 
-<content class="landing_content">
-<div class="window">
+    <content class="landing_content">
+      <div class="window">
+        <div class="bar">Welcome, <em>{{ .Nickname }}</em></div>
 
-<div class="bar"> Welcome, <em>{{.Nickname}}</em></div>
-
-<div class="window-content">
-<div class="landing_form">
-
-<!--
+        <div class="window-content">
+          <div class="landing_form">
+            <!--
 <form method="post" action="/nickname">
-	<input name="nickname" value="{{.Nickname}}" />
+	<input name="nickname" value="{{ .Nickname }}" />
 	<button type="submit">
 		Update
 	</button>
 </form>
 -->
 
-<form method="post" action="/game/new">
-	<button type="submit">
-		New Game
-	</button>
-</form>
+            <form method="post" action="/game/new">
+              <button type="submit">New Game</button>
+            </form>
 
-<h2>OR</h2>
+            <h2>OR</h2>
 
-<form method="get" action="/game/join" class="landing_join-form">
-    <input name="game-id" value="123" />
-	<button type="submit">
-		Join Game
-	</button>
-</form>
+            <form method="get" action="/game/join" class="landing_join-form">
+              <input name="game-id" value="123" />
+              <button type="submit">Join Game</button>
+            </form>
+          </div>
+        </div>
+      </div>
+    </content>
 
-</div>
-</div>
-</div>
-</content>
-
-<footer class="landing_footer">
-created by <a href="http://tha.sh">thash</a>
-</footer>
-</div>
-{{end}}
+    <footer class="landing_footer">
+      created by <a href="http://tha.sh">thash</a>
+    </footer>
+  </div>
+{{ end }}
