@@ -8,6 +8,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 )
@@ -42,7 +43,7 @@ func (e *webServer) Start() {
 	http.HandleFunc("GET /game/{id}/sse", e.Sse)
 	http.HandleFunc("GET /init", e.InitSession)
 	http.HandleFunc("GET /", e.Index)
-	log.Fatal(http.ListenAndServe(":9000", nil))
+	log.Fatal(http.ListenAndServe("0.0.0.0:9000", nil))
 }
 
 func (e *webServer) handleError(w http.ResponseWriter, err error, msg string) {
@@ -85,7 +86,14 @@ func (e *webServer) getSession(w http.ResponseWriter, r *http.Request) (Session,
 }
 
 func setCookie(key string, value string) string {
-	return fmt.Sprintf("%s=%s; Path=/; Secure; HttpOnly", key, value)
+	cookieOptions := []string{"Path=/", "HttpOnly"}
+
+	// TODO: setup a general config and consume here
+	if os.Getenv("ENV") == "prod" {
+		cookieOptions = append(cookieOptions, "Secure")
+	}
+
+	return fmt.Sprintf("%s=%s; %s", key, value, strings.Join(cookieOptions, "; "))
 }
 
 func (e *webServer) InitSession(w http.ResponseWriter, r *http.Request) {
@@ -110,7 +118,6 @@ func (e *webServer) InitSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (e *webServer) Index(w http.ResponseWriter, r *http.Request) {
-	// TODO: check why the fuck this page is called 3 times!
 	session, err := e.getSession(w, r)
 	if err != nil {
 		log.Println("no session redirecting to /init")
