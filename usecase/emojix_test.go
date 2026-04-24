@@ -253,9 +253,9 @@ func TestGameState(t *testing.T) {
 				{Nickname: "Player1", Me: true, Content: "Some Word"},
 			},
 			Leaderboard: []model.LeaderboardEntry{
-				{Nickname: "Player1", Me: true, GuessedWord: true, Score: 10},
-				{Nickname: "Player2", Me: false, GuessedWord: false, Score: 0},
-				{Nickname: "Player3", Me: false, GuessedWord: false, Score: 0},
+				{PlayerID: "p-1", Nickname: "Player1", Me: true, GuessedWord: true, Score: 10},
+				{PlayerID: "p-2", Nickname: "Player2", Me: false, GuessedWord: false, Score: 0},
+				{PlayerID: "p-3", Nickname: "Player3", Me: false, GuessedWord: false, Score: 0},
 			},
 		}, gameState)
 		if err != nil {

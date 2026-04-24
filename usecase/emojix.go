@@ -10,7 +10,6 @@ import (
 	"errors"
 	"fmt"
 	"log"
-	"maps"
 	mathRand "math/rand"
 	"regexp"
 	"slices"
@@ -101,9 +100,8 @@ func (gmn *UserLeftNotification) ParseData(data string) error {
 	return nil
 }
 
-func maskContent(content string, word string, currUserID string, senderUserID string, guessedWord bool) string {
-	notSelf := currUserID != senderUserID
-	if strings.EqualFold(word, content) && (notSelf || !guessedWord) {
+func maskContent(content string, word string, guessedWord bool) string {
+	if strings.EqualFold(word, content) && !guessedWord {
 		return "***"
 	}
 
@@ -117,21 +115,10 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 		return gameState, err
 	}
 
-	activePlayers := []model.Player{}
-	for _, p := range players {
-		if p.State == model.InactivePlayerState {
-			continue
-		}
-
-		activePlayers = append(activePlayers, p)
-	}
-
-	hasPlayer := slices.ContainsFunc(activePlayers, func(p model.Player) bool {
-		return p.ID == currentUserID
-	})
-
-	if !hasPlayer {
-		return gameState, errors.New("user not in the game")
+	activePlayers := e.filterActivePlayers(players)
+	err = e.isPlayerInGame(currentUserID, activePlayers)
+	if err != nil {
+		return gameState, err
 	}
 
 	messages, err := e.gameRepo.GetMessages(ctx, gameID)
@@ -154,75 +141,55 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 		return gameState, err
 	}
 
-	leaderboardMap := map[string]model.LeaderboardEntry{}
+	gameState.Hint = word.Hint
+	gameState.TurnID = latestTurn.ID
+	gameState.GameID = gameID
+	gameState.CurrentUserID = currentUserID
 
-	isGuessedWord := func(playerID string) bool {
-		for _, score := range scores {
-			if score.PlayerID == playerID && score.TurnID == latestTurn.ID {
-				return true
-			}
-		}
-		return false
-	}
+	leaderboard := e.buildLeaderboard(currentUserID, latestTurn.ID, scores, activePlayers)
+	gameState.Leaderboard = leaderboard
 
-	scoreMap := map[string]int{}
-	for _, score := range scores {
-		scoreMap[score.PlayerID] += score.Score
-	}
-
+	// check if turn ended and decide to mask word or not
+	leaderboardEntryMap := map[string]model.LeaderboardEntry{}
+	var currPlayerEntry model.LeaderboardEntry
 	turnEnded := true
-	for _, player := range activePlayers {
-		entry := model.LeaderboardEntry{
-			Nickname:    player.Nickname,
-			Me:          player.ID == currentUserID,
-			GuessedWord: isGuessedWord(player.ID),
-			Score:       scoreMap[player.ID],
+	for _, entry := range leaderboard {
+		if entry.Me {
+			currPlayerEntry = entry
 		}
 
-		// if at least one person not guessed yet then turn is still not ended
+		leaderboardEntryMap[entry.PlayerID] = entry
+
 		if !entry.GuessedWord {
 			turnEnded = false
 		}
-
-		leaderboardMap[player.ID] = entry
 	}
+	wordMaskRegex := regexp.MustCompile(`\w`)
+	gameWord := word.Word
+	if !currPlayerEntry.GuessedWord {
+		gameWord = wordMaskRegex.ReplaceAllString(gameWord, "*")
+	}
+	gameState.TurnEnded = turnEnded
+	gameState.Word = gameWord
 
+	// prepare messages
 	gameMessages := []model.GameStateMessage{}
-
 	for _, msg := range messages {
-		le := leaderboardMap[msg.PlayerID]
 
+		le := leaderboardEntryMap[msg.PlayerID]
 		gm := model.GameStateMessage{
-			Me:       msg.PlayerID == currentUserID,
+			Me:       le.Me,
 			Content:  msg.Content,
 			Nickname: le.Nickname,
 		}
 
-		gm.Content = maskContent(gm.Content, word.Word, currentUserID, msg.PlayerID, le.GuessedWord)
+		gm.Content = maskContent(gm.Content, word.Word, currPlayerEntry.GuessedWord)
 
 		gameMessages = append(gameMessages, gm)
 	}
-
 	// newest message at top
 	slices.Reverse(gameMessages)
-
-	currentPlayer := leaderboardMap[currentUserID]
-
-	wordMaskRegex := regexp.MustCompile(`\w`)
-	gameWord := word.Word
-
-	if !currentPlayer.GuessedWord {
-		gameWord = wordMaskRegex.ReplaceAllString(gameWord, "*")
-	}
-
-	gameState.Leaderboard = slices.Collect(maps.Values(leaderboardMap))
 	gameState.Messages = gameMessages
-	gameState.Word = gameWord
-	gameState.Hint = word.Hint
-	gameState.TurnID = latestTurn.ID
-	gameState.TurnEnded = turnEnded
-	gameState.GameID = gameID
-	gameState.CurrentUserID = currentUserID
 
 	return gameState, nil
 
@@ -521,43 +488,11 @@ func (e *emojixUsecase) Message(ctx context.Context, gameID string, userID strin
 	return nil
 }
 
-func (e *emojixUsecase) Leaderboard(ctx context.Context, gameID, currentUserID string) ([]model.LeaderboardEntry, error) {
+func (e *emojixUsecase) buildLeaderboard(currentUserID string, latestTurnID string, scores []model.Score, activePlayers []model.Player) []model.LeaderboardEntry {
 	leaderboardEntries := []model.LeaderboardEntry{}
-	players, err := e.gameRepo.GetPlayers(ctx, gameID)
-	if err != nil {
-		return leaderboardEntries, err
-	}
-
-	activePlayers := []model.Player{}
-	for _, p := range players {
-		if p.State == model.InactivePlayerState {
-			continue
-		}
-
-		activePlayers = append(activePlayers, p)
-	}
-
-	hasPlayer := slices.ContainsFunc(activePlayers, func(p model.Player) bool {
-		return p.ID == currentUserID
-	})
-
-	if !hasPlayer {
-		return leaderboardEntries, errors.New("user not in the game")
-	}
-
-	scores, err := e.gameRepo.GetScores(ctx, gameID)
-	if err != nil {
-		return leaderboardEntries, err
-	}
-
-	latestTurn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
-	if err != nil {
-		return leaderboardEntries, err
-	}
-
 	isGuessedWord := func(playerID string) bool {
 		for _, score := range scores {
-			if score.PlayerID == playerID && score.TurnID == latestTurn.ID {
+			if score.PlayerID == playerID && score.TurnID == latestTurnID {
 				return true
 			}
 		}
@@ -571,6 +506,7 @@ func (e *emojixUsecase) Leaderboard(ctx context.Context, gameID, currentUserID s
 
 	for _, player := range activePlayers {
 		entry := model.LeaderboardEntry{
+			PlayerID:    player.ID,
 			Nickname:    player.Nickname,
 			Me:          player.ID == currentUserID,
 			GuessedWord: isGuessedWord(player.ID),
@@ -579,6 +515,62 @@ func (e *emojixUsecase) Leaderboard(ctx context.Context, gameID, currentUserID s
 
 		leaderboardEntries = append(leaderboardEntries, entry)
 	}
+
+	return leaderboardEntries
+
+}
+
+func (e *emojixUsecase) filterActivePlayers(players []model.Player) []model.Player {
+	activePlayers := []model.Player{}
+	for _, p := range players {
+		if p.State == model.InactivePlayerState {
+			continue
+		}
+
+		activePlayers = append(activePlayers, p)
+	}
+
+	return activePlayers
+}
+
+func (e *emojixUsecase) isPlayerInGame(currentUserID string, activePlayers []model.Player) error {
+	if len(activePlayers) == 0 {
+		return errors.New("has no players")
+	}
+	hasPlayer := slices.ContainsFunc(activePlayers, func(p model.Player) bool {
+		return p.ID == currentUserID
+	})
+	if !hasPlayer {
+		return errors.New("user not in the game")
+	}
+
+	return nil
+}
+
+func (e *emojixUsecase) Leaderboard(ctx context.Context, gameID, currentUserID string) ([]model.LeaderboardEntry, error) {
+	leaderboardEntries := []model.LeaderboardEntry{}
+	players, err := e.gameRepo.GetPlayers(ctx, gameID)
+	if err != nil {
+		return leaderboardEntries, err
+	}
+
+	activePlayers := e.filterActivePlayers(players)
+	err = e.isPlayerInGame(currentUserID, activePlayers)
+	if err != nil {
+		return leaderboardEntries, err
+	}
+
+	scores, err := e.gameRepo.GetScores(ctx, gameID)
+	if err != nil {
+		return leaderboardEntries, err
+	}
+
+	latestTurn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
+	if err != nil {
+		return leaderboardEntries, err
+	}
+
+	leaderboardEntries = e.buildLeaderboard(currentUserID, latestTurn.ID, scores, activePlayers)
 
 	return leaderboardEntries, nil
 }

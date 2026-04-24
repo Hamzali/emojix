@@ -63,6 +63,7 @@ type User struct {
 }
 
 type LeaderboardEntry struct {
+	PlayerID    string
 	Nickname    string
 	Me          bool
 	GuessedWord bool
