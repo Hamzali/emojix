@@ -5,12 +5,13 @@
 game
 - [x] css setup
 - [.] add landing page styles together with basic design elements
+- [ ] remove guess input when a user is guessed the word correctly
 
 plan
 - [] write out onaboarding page designs and requirements
 
 techdebt
-- [] find a way to have one way to fetch leaderboard info, currently code is duplicated for Leaderboard and GameState
+- [x] find a way to have one way to fetch leaderboard info, currently code is duplicated for Leaderboard and GameState
 
 ## Backlog
 
