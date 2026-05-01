@@ -1,14 +1,19 @@
 # TODOs
 
-## Thu Jan  8 02:12:44 +03 2026
+## Fri May  1 06:15:29 PM +03 2026
 
 game
-- [x] css setup
+- [.] add turn timer logic and countdown on ui
 - [.] add landing page styles together with basic design elements
 - [ ] remove guess input when a user is guessed the word correctly
 
 plan
 - [] write out onaboarding page designs and requirements
+
+## Thu Jan  8 02:12:44 +03 2026
+
+game
+- [x] css setup
 
 techdebt
 - [x] find a way to have one way to fetch leaderboard info, currently code is duplicated for Leaderboard and GameState

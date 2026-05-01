@@ -1,15 +1,18 @@
 package service
 
 import (
+	"crypto/rand"
+	"encoding/hex"
+	"log"
+	"slices"
 	"time"
 )
 
 type GameNotifier interface {
 	Pub(gameID string, userID string, notif GameNotification)
 	PubAll(gameID string, notif GameNotification)
-	Sub(gameID string, userID string) chan GameNotification
+	Sub(gameID string, userID string) (chan GameNotification, func())
 	Subs(gameID string) []string
-	Unsub(userID string)
 }
 
 type GameNotification interface {
@@ -18,7 +21,25 @@ type GameNotification interface {
 	ParseData(data string) error
 }
 
+func generateRandomID() string {
+	// Create a byte slice of size 16 (128 bits)
+	bytes := make([]byte, 16)
+
+	// Fill the byte slice with random values
+	_, err := rand.Read(bytes)
+	if err != nil {
+		log.Println("failed to gen rand bytes")
+		return ""
+	}
+
+	// Encode the bytes to a hexadecimal string
+	id := hex.EncodeToString(bytes)
+
+	return id
+}
+
 type gameSub struct {
+	SubID     string
 	UserID    string
 	GameID    string
 	NotifChan chan GameNotification
@@ -35,7 +56,15 @@ func (gn *gameNotifier) Subs(gameID string) []string {
 		if sub.GameID != gameID {
 			continue
 		}
+
+		hasUserID := slices.Contains(subs, sub.UserID)
+
+		if hasUserID {
+			continue
+		}
+
 		subs = append(subs, sub.UserID)
+
 	}
 
 	return subs
@@ -47,28 +76,17 @@ func NewGameNotifier() GameNotifier {
 	return &gameNotifier{subs: []gameSub{}}
 }
 
-func (gn *gameNotifier) Sub(gameID string, userID string) chan GameNotification {
-	for _, sub := range gn.subs {
-		if sub.GameID == gameID && sub.UserID == userID {
-			return sub.NotifChan
-		}
-	}
-
+func (gn *gameNotifier) Sub(gameID string, userID string) (chan GameNotification, func()) {
 	ch := make(chan GameNotification)
-	gameSub := gameSub{userID, gameID, ch, time.Now()}
-	gn.subs = append(gn.subs, gameSub)
-	return ch
-}
+	subID := generateRandomID()
+	gs := gameSub{subID, userID, gameID, ch, time.Now()}
+	gn.subs = append(gn.subs, gs)
 
-func (gn *gameNotifier) Unsub(userID string) {
-	newSubs := []gameSub{}
-	for _, s := range gn.subs {
-		if s.UserID == userID {
-			continue
-		}
-		newSubs = append(newSubs, s)
+	return ch, func() {
+		gn.subs = slices.DeleteFunc(gn.subs, func(s gameSub) bool {
+			return s.SubID == subID
+		})
 	}
-	gn.subs = newSubs
 }
 
 func (gn *gameNotifier) Pub(gameID string, userID string, notif GameNotification) {

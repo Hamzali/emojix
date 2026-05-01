@@ -71,7 +71,7 @@ func TestJoinGame(t *testing.T) {
 			},
 		}
 
-		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns)
+		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &service.MockGameLoop{})
 
 		ctx := context.Background()
 		err := emojiUsecase.JoinGame(ctx, "some-game-id", "new-player-id")
@@ -113,7 +113,7 @@ func TestJoinGame(t *testing.T) {
 			PubMock: func(gameID, userID string, notif service.GameNotification) {},
 		}
 
-		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns)
+		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &service.MockGameLoop{})
 
 		ctx := context.Background()
 		err := emojiUsecase.JoinGame(ctx, "some-game-id", "other-player-id")
@@ -159,7 +159,7 @@ func TestJoinGame(t *testing.T) {
 		mgns := &service.MockGameNotifier{
 			PubMock: func(gameID, userID string, notif service.GameNotification) {},
 		}
-		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns)
+		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &service.MockGameLoop{})
 
 		ctx := context.Background()
 		err := emojiUsecase.JoinGame(ctx, "some-game-id", "kicked-player-id")
@@ -213,7 +213,7 @@ func TestJoinGame(t *testing.T) {
 			PubMock: func(gameID, userID string, notif service.GameNotification) {},
 		}
 
-		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns)
+		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &service.MockGameLoop{})
 
 		ctx := context.Background()
 		err := emojiUsecase.JoinGame(ctx, "some-game-id", "new-player-id")

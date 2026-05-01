@@ -9,6 +9,7 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 )
 
 func assertValueErrorMsg(fieldName string, expectedValue any, testValue any) string {
@@ -131,8 +132,9 @@ func TestGameState(t *testing.T) {
 					t.Error(errMsg)
 				}
 				return model.GameTurn{
-					ID:     "some-turn-id",
-					WordID: "some-word-id",
+					ID:        "some-turn-id",
+					WordID:    "some-word-id",
+					CreatedAt: time.Now(),
 				}, nil
 			},
 			GetMessagesMock: func(ctx context.Context, id string) ([]model.Message, error) {
@@ -169,6 +171,7 @@ func TestGameState(t *testing.T) {
 			mwr,
 			nil,
 			nil,
+			&service.MockGameLoop{},
 		)
 
 		ctx := context.Background()
@@ -208,6 +211,7 @@ func TestGameState(t *testing.T) {
 		mgr.GetLatestTurnMock = func(ctx context.Context, id string) (model.GameTurn, error) {
 			return model.GameTurn{
 				ID: "last-turn-id", WordID: "some-word-id",
+				CreatedAt: time.Now(),
 			}, nil
 		}
 		mgr.GetScoresMock = func(ctx context.Context, id string) ([]model.Score, error) {
@@ -234,6 +238,7 @@ func TestGameState(t *testing.T) {
 			mwr,
 			nil,
 			nil,
+			&service.MockGameLoop{},
 		)
 
 		ctx := context.Background()
@@ -292,6 +297,7 @@ func TestGameState(t *testing.T) {
 			nil,
 			nil,
 			nil,
+			&service.MockGameLoop{},
 		)
 
 		ctx := context.Background()
@@ -304,8 +310,9 @@ func TestGameState(t *testing.T) {
 
 func TestGameUpdates(t *testing.T) {
 	ch := make(chan service.GameNotification)
+	cleanupCalled := false
 	mgn := &service.MockGameNotifier{
-		SubMock: func(gameID, userID string) chan service.GameNotification {
+		SubMock: func(gameID, userID string) (chan service.GameNotification, func()) {
 			err := assertCalledWithError("GameID", "some-game-id", gameID)
 			if err != nil {
 				t.Error(err)
@@ -316,14 +323,10 @@ func TestGameUpdates(t *testing.T) {
 				t.Error(err)
 			}
 
-			return ch
-		},
-		UnsubMock: func(userID string) {
-			err := assertCalledWithError("UserID", "some-user-id", userID)
-			if err != nil {
-				t.Error(err)
-			}
+			return ch, func() {
 
+				cleanupCalled = true
+			}
 		},
 	}
 	emojixUsecase := usecase.NewEmojixUsecase(
@@ -332,6 +335,7 @@ func TestGameUpdates(t *testing.T) {
 		nil,
 		nil,
 		mgn,
+		&service.MockGameLoop{},
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -363,7 +367,7 @@ func TestGameUpdates(t *testing.T) {
 		t.Errorf("expected to not error but got %v", err)
 	}
 
-	if mgn.UnsubMockCalled != true {
+	if cleanupCalled != true {
 		t.Error("expected to unsubscribe")
 	}
 }

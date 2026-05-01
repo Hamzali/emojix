@@ -24,7 +24,7 @@ type GameRepository interface {
 	GetPlayers(ctx context.Context, gameID string) ([]model.Player, error)
 
 	GetLatestTurn(ctx context.Context, gameID string) (model.GameTurn, error)
-	AddTurn(ctx context.Context, gameID string, wordID string) error
+	AddTurn(ctx context.Context, gameID string, wordID string) (model.GameTurn, error)
 
 	// Message/Content
 	GetMessages(ctx context.Context, gameID string) ([]model.Message, error)

@@ -38,12 +38,15 @@ func main() {
 
 	gameNotifier := service.NewGameNotifier()
 
+	gameLoop := service.NewGameLoop(service.NewRealClock())
+
 	emojixUsecase := usecase.NewEmojixUsecase(
 		userRepo,
 		gameRepo,
 		wordRepo,
 		unitOfWorkFactory,
 		gameNotifier,
+		gameLoop,
 	)
 
 	view := emojix.NewHTMLView()

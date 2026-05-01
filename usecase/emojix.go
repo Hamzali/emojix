@@ -37,14 +37,22 @@ func NewEmojixUsecase(
 	wordRepo repository.WordRepository,
 	unitOfWorkFactory repository.UnitOfWorkFactory,
 	gameNotifier service.GameNotifier,
+	gameLoop service.GameLoop,
 ) EmojixUsecase {
-	return &emojixUsecase{
+	uc := &emojixUsecase{
 		userRepo,
 		gameRepo,
 		wordRepo,
 		unitOfWorkFactory,
 		gameNotifier,
+		gameLoop,
 	}
+
+	gameLoop.SetOnTurnEndHandler(func(ctx context.Context, gameID string) {
+		uc.onTurnEnd(ctx, gameID)
+	})
+
+	return uc
 }
 
 type emojixUsecase struct {
@@ -53,21 +61,21 @@ type emojixUsecase struct {
 	wordRepo          repository.WordRepository
 	unitOfWorkFactory repository.UnitOfWorkFactory
 	gameNotifier      service.GameNotifier
+	gameLoop          service.GameLoop
 }
 
 func (e *emojixUsecase) GameUpdates(ctx context.Context, gameID string, userID string, handler GameUpdateHandler) error {
-	gameSubCh := e.gameNotifier.Sub(gameID, userID)
+	gameSubCh, cleanup := e.gameNotifier.Sub(gameID, userID)
+	defer cleanup()
 	for {
 
 		select {
 		case notif := <-gameSubCh:
 			err := handler(notif.GetType(), notif.GetData())
 			if err != nil {
-				e.gameNotifier.Unsub(userID)
 				return err
 			}
 		case <-ctx.Done():
-			e.gameNotifier.Unsub(userID)
 			return nil
 		}
 	}
@@ -108,6 +116,8 @@ func maskContent(content string, word string, guessedWord bool) string {
 	return content
 }
 
+const turnDuration = time.Second * 60
+
 func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUserID string) (model.GameState, error) {
 	gameState := model.GameState{}
 	players, err := e.gameRepo.GetPlayers(ctx, gameID)
@@ -143,6 +153,7 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 
 	gameState.Hint = word.Hint
 	gameState.TurnID = latestTurn.ID
+	gameState.TurnStartedAt = latestTurn.CreatedAt
 	gameState.GameID = gameID
 	gameState.CurrentUserID = currentUserID
 
@@ -152,7 +163,7 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 	// check if turn ended and decide to mask word or not
 	leaderboardEntryMap := map[string]model.LeaderboardEntry{}
 	var currPlayerEntry model.LeaderboardEntry
-	turnEnded := true
+	allGuessed := true
 	for _, entry := range leaderboard {
 		if entry.Me {
 			currPlayerEntry = entry
@@ -161,7 +172,7 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 		leaderboardEntryMap[entry.PlayerID] = entry
 
 		if !entry.GuessedWord {
-			turnEnded = false
+			allGuessed = false
 		}
 	}
 	wordMaskRegex := regexp.MustCompile(`\w`)
@@ -169,7 +180,12 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 	if !currPlayerEntry.GuessedWord {
 		gameWord = wordMaskRegex.ReplaceAllString(gameWord, "*")
 	}
-	gameState.TurnEnded = turnEnded
+
+	turnEndTime := gameState.TurnStartedAt.Add(turnDuration)
+	now := time.Now()
+	turnTimedOut := now.After(turnEndTime)
+
+	gameState.TurnEnded = allGuessed || turnTimedOut
 	gameState.Word = gameWord
 
 	// prepare messages
@@ -284,14 +300,7 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string) (model.Game
 		return model.Game{}, err
 	}
 
-	allWords, err := e.wordRepo.GetAll(ctx)
-	if err != nil {
-		return model.Game{}, err
-	}
-
-	pickedWord := pickGameWord(allWords)
-
-	err = gameRepo.AddTurn(ctx, game.ID, pickedWord.ID)
+	err = e.newGameTurn(ctx, gameRepo, game.ID)
 	if err != nil {
 		return model.Game{}, err
 	}
@@ -299,6 +308,9 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string) (model.Game
 	if err = uow.Commit(); err != nil {
 		return model.Game{}, err
 	}
+
+	// Start the game loop AFTER commit so the first turn is persisted
+	e.gameLoop.Start(context.Background(), game.ID, turnDuration)
 
 	return game, nil
 }
@@ -441,30 +453,39 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 	go e.gameNotifier.Pub(gameID, userID, &GameCorrectGuessNotification{userID, currPlayer.Nickname})
 
 	if guessedCount == len(players) {
-		go e.gameNotifier.PubAll(gameID, &GameTurnEndNotification{})
-		go func() {
-			time.Sleep(5 * time.Second)
-			err := e.newGameTurn(context.Background(), gameID)
-			if err != nil {
-				log.Printf("failed to create new turn err: %v\n", err)
-			}
-		}()
+		e.gameLoop.EndGameTurn(gameID)
 	}
 
 	return nil
 
 }
 
-func (e *emojixUsecase) newGameTurn(ctx context.Context, gameID string) error {
+func (e *emojixUsecase) onTurnEnd(ctx context.Context, gameID string) {
+	e.gameNotifier.PubAll(gameID, &GameTurnEndNotification{})
+	time.Sleep(5 * time.Second)
+
+	err := e.newGameTurn(ctx, e.gameRepo, gameID)
+	if err != nil {
+		log.Printf("failed to create new turn, retrying: %v", err)
+		time.Sleep(time.Second)
+		err = e.newGameTurn(ctx, e.gameRepo, gameID)
+	}
+	if err != nil {
+		log.Printf("failed to create new turn after retry, stopping game: %v", err)
+		e.gameLoop.StopGame(gameID)
+	}
+}
+
+func (e *emojixUsecase) newGameTurn(ctx context.Context, gr repository.GameRepository, gameID string) error {
 	allWords, err := e.wordRepo.GetAll(ctx)
 	if err != nil {
 		return err
 	}
 
 	pickedWord := pickGameWord(allWords)
-	err = e.gameRepo.AddTurn(ctx, gameID, pickedWord.ID)
 
-	return nil
+	_, err = gr.AddTurn(ctx, gameID, pickedWord.ID)
+	return err
 }
 
 func (e *emojixUsecase) Message(ctx context.Context, gameID string, userID string, content string) error {

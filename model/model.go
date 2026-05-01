@@ -16,10 +16,9 @@ type Word struct {
 }
 
 type GameTurn struct {
-	ID     string
-	GameID string
-	WordID string
-
+	ID        string
+	GameID    string
+	WordID    string
 	CreatedAt time.Time
 }
 
@@ -80,6 +79,7 @@ type GameState struct {
 	GameID        string
 	CurrentUserID string
 	TurnID        string
+	TurnStartedAt time.Time
 	TurnEnded     bool
 	Word          string
 	Hint          string

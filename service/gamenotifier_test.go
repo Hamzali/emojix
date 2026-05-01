@@ -26,7 +26,7 @@ func (t testNotif) ParseData(data string) error {
 func TestGameNotifierPubSub(t *testing.T) {
 	notifier := service.NewGameNotifier()
 
-	subCh := notifier.Sub("some-game-id", "some-user-id")
+	subCh, _ := notifier.Sub("some-game-id", "some-user-id")
 
 	// important note if you don't want to block publishing process use go routines!
 	go func() {
@@ -56,10 +56,10 @@ func TestGameNotifierPubSub(t *testing.T) {
 func TestGameNotifierSubs(t *testing.T) {
 
 	notifier := service.NewGameNotifier()
-	_ = notifier.Sub("some-game-id", "user-1")
-	_ = notifier.Sub("some-game-id", "user-2")
-	_ = notifier.Sub("some-game-id", "user-3")
-	_ = notifier.Sub("other-game-id", "user-4")
+	_, _ = notifier.Sub("some-game-id", "user-1")
+	_, _ = notifier.Sub("some-game-id", "user-2")
+	_, _ = notifier.Sub("some-game-id", "user-3")
+	_, _ = notifier.Sub("other-game-id", "user-4")
 
 	subs := notifier.Subs("some-game-id")
 

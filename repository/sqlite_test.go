@@ -568,7 +568,7 @@ func TestGameRepository(t *testing.T) {
 	t.Run("AddTurn", func(t *testing.T) {
 		cleanupDB()
 
-		err = repo.AddTurn(context.Background(), "game-id", "word-id")
+		_, err = repo.AddTurn(context.Background(), "game-id", "word-id")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -577,17 +577,17 @@ func TestGameRepository(t *testing.T) {
 		now := time.Now()
 		cleanupDB()
 
-		err = repo.AddTurn(context.Background(), "game-id", "word-id-1")
+		_, err = repo.AddTurn(context.Background(), "game-id", "word-id-1")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = repo.AddTurn(context.Background(), "game-id", "word-id-2")
+		_, err = repo.AddTurn(context.Background(), "game-id", "word-id-2")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		err = repo.AddTurn(context.Background(), "game-id", "word-id-3")
+		_, err = repo.AddTurn(context.Background(), "game-id", "word-id-3")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -642,9 +642,9 @@ func TestGameRepository(t *testing.T) {
 		}
 
 		expectedScores := []model.Score{
-			model.Score{GameID: "game-id", PlayerID: "player-id", MessageID: "message-id", TurnID: "turn-id", Score: 10, CreatedAt: now},
-			model.Score{GameID: "game-id", PlayerID: "player-id", MessageID: "message-id", TurnID: "turn-id", Score: 20, CreatedAt: now},
-			model.Score{GameID: "game-id", PlayerID: "player-id", MessageID: "message-id", TurnID: "turn-id", Score: 30, CreatedAt: now},
+			{GameID: "game-id", PlayerID: "player-id", MessageID: "message-id", TurnID: "turn-id", Score: 10, CreatedAt: now},
+			{GameID: "game-id", PlayerID: "player-id", MessageID: "message-id", TurnID: "turn-id", Score: 20, CreatedAt: now},
+			{GameID: "game-id", PlayerID: "player-id", MessageID: "message-id", TurnID: "turn-id", Score: 30, CreatedAt: now},
 		}
 
 		for i, score := range scores {

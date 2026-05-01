@@ -63,7 +63,7 @@ type Session struct {
 
 func (e *webServer) getSession(w http.ResponseWriter, r *http.Request) (Session, error) {
 	redirectToInit := func() {
-		toUrl := fmt.Sprintf("/init?from=%s", r.URL.RawPath)
+		toUrl := fmt.Sprintf("/init?from=%s", r.URL.Path)
 		http.Redirect(w, r, toUrl, http.StatusFound)
 	}
 
@@ -106,7 +106,6 @@ func (e *webServer) InitSession(w http.ResponseWriter, r *http.Request) {
 	}
 
 	fromUrl := r.URL.Query().Get("from")
-
 	if fromUrl == "" {
 		fromUrl = "/"
 	}
@@ -179,15 +178,15 @@ func (e *webServer) Game(w http.ResponseWriter, r *http.Request) {
 	ctx := r.Context()
 
 	gameState, err := e.emojixUsecase.GameState(ctx, gameID, session.UserID)
+	if err != nil {
+		e.handleError(w, err, "failed to load game")
+		return
+	}
+
 	if gameState.TurnEnded {
 		log.Println("All guessed waiting for new turn!")
 		http.Redirect(w, r, fmt.Sprintf("/game/%s/loading", gameID), http.StatusSeeOther)
 
-		return
-	}
-
-	if err != nil {
-		e.handleError(w, err, "failed to load game")
 		return
 	}
 

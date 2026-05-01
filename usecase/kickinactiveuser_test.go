@@ -72,6 +72,7 @@ func TestKickInactiveUser(t *testing.T) {
 			nil,
 			nil,
 			mgn,
+			&service.MockGameLoop{},
 		)
 
 		err := emojixUsecase.KickInactiveUser(context.Background(), "game-id", "user-4")
@@ -112,6 +113,7 @@ func TestKickInactiveUser(t *testing.T) {
 			nil,
 			nil,
 			mgn,
+			&service.MockGameLoop{},
 		)
 
 		err := emojixUsecase.KickInactiveUser(context.Background(), "game-id", "user-1")

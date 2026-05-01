@@ -341,18 +341,25 @@ func (r *sqliteGameRepository) GetLatestTurn(ctx context.Context, gameID string)
 	return turn, nil
 }
 
-func (r *sqliteGameRepository) AddTurn(ctx context.Context, gameID string, wordID string) error {
+func (r *sqliteGameRepository) AddTurn(ctx context.Context, gameID string, wordID string) (model.GameTurn, error) {
 	id, err := generateRandomID()
 	if err != nil {
-		return err
+		return model.GameTurn{}, err
 	}
 
-	_, err = r.db.ExecContext(ctx, "INSERT INTO game_turns (id, game_id, word_id, created_at) VALUES (?, ?, ?, ?)", id, gameID, wordID, time.Now().UnixMicro())
+	turn := model.GameTurn{
+		ID:        id,
+		GameID:    gameID,
+		WordID:    wordID,
+		CreatedAt: time.Now(),
+	}
+
+	_, err = r.db.ExecContext(ctx, "INSERT INTO game_turns (id, game_id, word_id, created_at) VALUES (?, ?, ?, ?)", id, gameID, wordID, turn.CreatedAt.UnixMicro())
 	if err != nil {
-		return err
+		return model.GameTurn{}, err
 	}
 
-	return nil
+	return turn, nil
 }
 
 func (r *sqliteGameRepository) GetScores(ctx context.Context, gameID string) ([]model.Score, error) {
