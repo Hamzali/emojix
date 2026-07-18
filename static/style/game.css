@@ -263,3 +263,20 @@
   padding: 0.5rem var(--space-1);
   white-space: nowrap;
 }
+
+/* Turn timer */
+.turn-timer {
+  height: 6px;
+  background-color: var(--bg-window);
+  border-radius: var(--radius);
+  margin: var(--space-1) 0;
+  overflow: hidden;
+}
+
+.turn-timer-bar {
+  height: 100%;
+  border-radius: var(--radius);
+  background-color: var(--ui-green);
+  width: 100%;
+  transition: width 1s linear, background-color 1s ease;
+}

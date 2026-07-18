@@ -33,6 +33,9 @@
           <div class="emoji-display">
             {{ .EmojiHint }}
           </div>
+          <div class="turn-timer">
+            <div class="turn-timer-bar" data-start="{{ .TurnStartedAt.UnixMilli }}"></div>
+          </div>
           <div
             class="word-display"
             hx-get="/game/{{ .GameID }}/word"
@@ -92,6 +95,39 @@
       document.body.addEventListener("sse:turnended", (event) => {
         location.reload();
       });
+
+      // Turn timer: visual bar with no numbers
+      (function initTimer() {
+        const TURN_DURATION = 60000; // 60 seconds in ms
+        const bar = document.querySelector('.turn-timer-bar');
+        if (!bar) return;
+
+        const startMs = parseInt(bar.dataset.start, 10);
+        if (isNaN(startMs)) return;
+
+        function update() {
+          const elapsed = Date.now() - startMs;
+          const remaining = Math.max(0, TURN_DURATION - elapsed);
+          const fraction = remaining / TURN_DURATION;
+
+          bar.style.width = (fraction * 100) + '%';
+
+          // Color: green → yellow → red as time runs out
+          if (fraction > 0.5) {
+            bar.style.backgroundColor = 'var(--ui-green)';
+          } else if (fraction > 0.25) {
+            bar.style.backgroundColor = 'var(--ui-yellow)';
+          } else {
+            bar.style.backgroundColor = 'var(--ui-red)';
+          }
+
+          if (fraction > 0) {
+            requestAnimationFrame(update);
+          }
+        }
+
+        requestAnimationFrame(update);
+      })();
     </script>
   </div>
 {{ end }}

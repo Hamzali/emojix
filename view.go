@@ -4,6 +4,7 @@ import (
 	"emojix/model"
 	"html/template"
 	"io"
+	"time"
 )
 
 type IndexPageViewParam struct {
@@ -12,12 +13,12 @@ type IndexPageViewParam struct {
 }
 
 type GamePageViewParam struct {
-	GameID      string
-	Leaderboard []model.LeaderboardEntry
-	Messages    []model.GameStateMessage
-
-	MaskedWord []string
-	EmojiHint  string
+	GameID        string
+	Leaderboard   []model.LeaderboardEntry
+	Messages      []model.GameStateMessage
+	MaskedWord    []string
+	EmojiHint     string
+	TurnStartedAt time.Time
 }
 
 type GameLoadingPageViewParam struct {
