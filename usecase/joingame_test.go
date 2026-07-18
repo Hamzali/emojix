@@ -9,7 +9,21 @@ import (
 	"errors"
 	"fmt"
 	"testing"
+	"time"
 )
+
+// assertPubNotCalled provides a race-free negative assertion for the
+// production `go gameNotifier.Pub(...)` goroutine: it fails the test if a Pub
+// invocation is observed on pubCh within a short bounded timeout, instead of
+// sleeping and then reading a bool flag written from another goroutine.
+func assertPubNotCalled(t *testing.T, pubCh <-chan struct{}) {
+	t.Helper()
+	select {
+	case <-pubCh:
+		t.Fatal("expected GameNotifier.Pub not to be called")
+	case <-time.After(50 * time.Millisecond):
+	}
+}
 
 func TestJoinGame(t *testing.T) {
 
@@ -109,8 +123,11 @@ func TestJoinGame(t *testing.T) {
 				return nil
 			},
 		}
+		pubCh := make(chan struct{}, 1)
 		mgns := &service.MockGameNotifier{
-			PubMock: func(gameID, userID string, notif service.GameNotification) {},
+			PubMock: func(gameID, userID string, notif service.GameNotification) {
+				pubCh <- struct{}{}
+			},
 		}
 
 		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &service.MockGameLoop{}, service.NewRealClock())
@@ -125,9 +142,7 @@ func TestJoinGame(t *testing.T) {
 			t.Error("expected GameRepository.AddPlayer not to be called")
 		}
 
-		if mgns.PubCalled == true {
-			t.Error("expected GameNotifier.Pub not to be called")
-		}
+		assertPubNotCalled(t, pubCh)
 	})
 
 	t.Run("reactivates user joined and kicked before", func(t *testing.T) {
@@ -156,8 +171,11 @@ func TestJoinGame(t *testing.T) {
 			},
 		}
 
+		pubCh := make(chan struct{}, 1)
 		mgns := &service.MockGameNotifier{
-			PubMock: func(gameID, userID string, notif service.GameNotification) {},
+			PubMock: func(gameID, userID string, notif service.GameNotification) {
+				pubCh <- struct{}{}
+			},
 		}
 		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &service.MockGameLoop{}, service.NewRealClock())
 
@@ -171,7 +189,14 @@ func TestJoinGame(t *testing.T) {
 			t.Error("expected GameRepository.AddPlayer not to be called")
 		}
 
-		if mgns.PubCalled == true {
+		// Wait for the go Pub(...) goroutine to finish before reading PubCalled.
+		select {
+		case <-pubCh:
+		case <-time.After(time.Second):
+			t.Fatal("expected GameNotifier.Pub to be called")
+		}
+
+		if mgns.PubCalled == false {
 			t.Error("expected GameNotifier.Pub to be called")
 		}
 
@@ -209,8 +234,11 @@ func TestJoinGame(t *testing.T) {
 				return nil
 			},
 		}
+		pubCh := make(chan struct{}, 1)
 		mgns := &service.MockGameNotifier{
-			PubMock: func(gameID, userID string, notif service.GameNotification) {},
+			PubMock: func(gameID, userID string, notif service.GameNotification) {
+				pubCh <- struct{}{}
+			},
 		}
 
 		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &service.MockGameLoop{}, service.NewRealClock())
@@ -225,8 +253,6 @@ func TestJoinGame(t *testing.T) {
 			t.Error("expected GameRepository.AddPlayer not to be called")
 		}
 
-		if mgns.PubCalled == true {
-			t.Error("expected GameNotifier.Pub not to be called")
-		}
+		assertPubNotCalled(t, pubCh)
 	})
 }
