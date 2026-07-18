@@ -1406,3 +1406,281 @@ func TestMessage(t *testing.T) {
 		assertNoPub(t, pubCh)
 	})
 }
+
+// --- T10: TestLeaderboard + TestGameWord ---
+
+func TestLeaderboard(t *testing.T) {
+	const gameID = "game-1"
+
+	t.Run("happy path aggregates scores and marks Me/guessed on latest turn", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{
+					{ID: "p-1", Nickname: "Nick1", State: model.ActivePlayerState},
+					{ID: "p-2", Nickname: "Nick2", State: model.ActivePlayerState},
+					{ID: "p-3", Nickname: "Nick3", State: model.ActivePlayerState},
+				}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				return []model.Score{
+					{PlayerID: "p-1", Score: 10, TurnID: "older"},
+					{PlayerID: "p-1", Score: 5, TurnID: "latest"},
+					{PlayerID: "p-2", Score: 5, TurnID: "latest"},
+				}, nil
+			},
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: "latest"}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+
+		entries, err := uc.Leaderboard(context.Background(), gameID, "p-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 3 {
+			t.Fatalf("entries: got %d, want 3", len(entries))
+		}
+		want := []model.LeaderboardEntry{
+			{PlayerID: "p-1", Nickname: "Nick1", Me: true, GuessedWord: true, Score: 15},
+			{PlayerID: "p-2", Nickname: "Nick2", Me: false, GuessedWord: true, Score: 5},
+			{PlayerID: "p-3", Nickname: "Nick3", Me: false, GuessedWord: false, Score: 0},
+		}
+		for i, e := range entries {
+			if e != want[i] {
+				t.Errorf("entry[%d]: got %+v, want %+v", i, e, want[i])
+			}
+		}
+	})
+
+	t.Run("user not in game returns error and empty slice", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{
+					{ID: "p-1", Nickname: "Nick1", State: model.ActivePlayerState},
+					{ID: "p-2", Nickname: "Nick2", State: model.ActivePlayerState},
+				}, nil
+			},
+			GetScoresMock:    func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil },
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) { return model.GameTurn{ID: "latest"}, nil },
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+
+		entries, err := uc.Leaderboard(context.Background(), gameID, "p-3")
+		if err == nil {
+			t.Fatal("expected error for a user not in the game")
+		}
+		if len(entries) != 0 {
+			t.Errorf("expected empty slice on error, got %d entries", len(entries))
+		}
+	})
+
+	t.Run("inactive players are excluded", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{
+					{ID: "p-1", Nickname: "Nick1", State: model.ActivePlayerState},
+					{ID: "p-2", Nickname: "Nick2", State: model.InactivePlayerState},
+				}, nil
+			},
+			GetScoresMock:    func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil },
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) { return model.GameTurn{ID: "latest"}, nil },
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+
+		entries, err := uc.Leaderboard(context.Background(), gameID, "p-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 1 {
+			t.Fatalf("entries: got %d, want 1 (inactive excluded)", len(entries))
+		}
+		if entries[0].PlayerID != "p-1" {
+			t.Errorf("entry: got %q, want p-1", entries[0].PlayerID)
+		}
+	})
+
+	t.Run("GetPlayers fails propagates", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return nil, errors.New("players failed")
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		_, err := uc.Leaderboard(context.Background(), gameID, "p-1")
+		if err == nil {
+			t.Fatal("expected error from GetPlayers")
+		}
+	})
+
+	t.Run("GetScores fails propagates", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{{ID: "p-1", Nickname: "Nick1", State: model.ActivePlayerState}}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				return nil, errors.New("scores failed")
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		_, err := uc.Leaderboard(context.Background(), gameID, "p-1")
+		if err == nil {
+			t.Fatal("expected error from GetScores")
+		}
+	})
+
+	t.Run("GetLatestTurn fails propagates", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{{ID: "p-1", Nickname: "Nick1", State: model.ActivePlayerState}}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil },
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{}, errors.New("turn failed")
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		_, err := uc.Leaderboard(context.Background(), gameID, "p-1")
+		if err == nil {
+			t.Fatal("expected error from GetLatestTurn")
+		}
+	})
+}
+
+func TestGameWord(t *testing.T) {
+	const (
+		gameID = "game-1"
+		userID = "p-1"
+		wordID = "w-1"
+		turnID = "t-1"
+	)
+	wordRepoFor := func(w model.Word) *repository.MockWordRepository {
+		return &repository.MockWordRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+				if err := assertCalledWithError("WordID", wordID, id); err != nil {
+					t.Error(err)
+				}
+				return w, nil
+			},
+		}
+	}
+
+	t.Run("not guessed returns masked word", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: turnID, WordID: wordID}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				// a score for another player, but not the current user
+				return []model.Score{{PlayerID: "p-2", TurnID: turnID}}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Secret"}), nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+
+		got, err := uc.GameWord(context.Background(), gameID, userID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "******"; got != want {
+			t.Errorf("masked word: got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("guessed returns raw word", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: turnID, WordID: wordID}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				return []model.Score{{PlayerID: userID, TurnID: turnID}}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Secret"}), nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+
+		got, err := uc.GameWord(context.Background(), gameID, userID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got != "Secret" {
+			t.Errorf("raw word: got %q, want %q", got, "Secret")
+		}
+	})
+
+	t.Run("non-word chars leak unmasked through the regex", func(t *testing.T) {
+		// The mask regex is `\w`, so spaces/punctuation/emoji are not replaced.
+		// This documents the limitation; a better masking scheme is backlog.
+		// TODO(backlog): replace the `\w`-based mask with a scheme that hides
+		// the whole word regardless of character class.
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: turnID, WordID: wordID}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil },
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Hi 👋"}), nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+
+		got, err := uc.GameWord(context.Background(), gameID, userID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if want := "** 👋"; got != want {
+			t.Errorf("masked word: got %q, want %q", got, want)
+		}
+	})
+
+	t.Run("GetLatestTurn fails returns empty string and error", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{}, errors.New("turn failed")
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		got, err := uc.GameWord(context.Background(), gameID, userID)
+		if err == nil {
+			t.Fatal("expected error from GetLatestTurn")
+		}
+		if got != "" {
+			t.Errorf("expected empty string on error, got %q", got)
+		}
+	})
+
+	t.Run("wordRepo.FindByID fails returns empty string and error", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: turnID, WordID: wordID}, nil
+			},
+		}
+		mwr := &repository.MockWordRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+				return model.Word{}, errors.New("word failed")
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		got, err := uc.GameWord(context.Background(), gameID, userID)
+		if err == nil {
+			t.Fatal("expected error from FindByID")
+		}
+		if got != "" {
+			t.Errorf("expected empty string on error, got %q", got)
+		}
+	})
+
+	t.Run("GetScores fails returns empty string and error", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: turnID, WordID: wordID}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				return nil, errors.New("scores failed")
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Secret"}), nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		got, err := uc.GameWord(context.Background(), gameID, userID)
+		if err == nil {
+			t.Fatal("expected error from GetScores")
+		}
+		if got != "" {
+			t.Errorf("expected empty string on error, got %q", got)
+		}
+	})
+}
