@@ -1,4 +1,7 @@
-package service
+// Package servicetest holds test doubles for the service package. It is a
+// separate package (like net/http/httptest) so the doubles are importable by
+// other packages' tests without shipping them in the production binary.
+package servicetest
 
 import (
 	"sync"

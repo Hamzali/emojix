@@ -1,8 +1,11 @@
-package service
+package servicetest
 
-import "sync"
+import (
+	"emojix/service"
+	"sync"
+)
 
-// MockGameNotifier is a test double for GameNotifier.
+// MockGameNotifier is a test double for service.GameNotifier.
 //
 // Concurrency: PubCalled and PubAllCalled are guarded by mu so production
 // code that spawns `go notifier.Pub(...)` does not race with assertions.
@@ -15,25 +18,25 @@ import "sync"
 //   - SubMock / SubsMock: panic — these must return values, so an unset
 //     mock panicking is the correct "you forgot to wire it" signal.
 //
-// The embedded GameNotifier interface is deliberately left nil so that adding
+// The embedded service.GameNotifier interface is deliberately left nil so that adding
 // a new interface method without a mock panics rather than silently no-ops
 // (the panic comes from the nil embedded interface, not from the unset Mock
 // func — kept distinct from Sub/Subs on purpose).
 type MockGameNotifier struct {
-	GameNotifier
+	service.GameNotifier
 
 	mu sync.Mutex
 
-	PubMock      func(gameID string, userID string, notif GameNotification)
+	PubMock      func(gameID string, userID string, notif service.GameNotification)
 	PubCalled    bool
-	PubAllMock   func(gameID string, notif GameNotification)
+	PubAllMock   func(gameID string, notif service.GameNotification)
 	PubAllCalled bool
 
-	SubMock  func(gameID string, userID string) (chan GameNotification, func())
+	SubMock  func(gameID string, userID string) (chan service.GameNotification, func())
 	SubsMock func(gameID string) []string
 }
 
-func (m *MockGameNotifier) Pub(gameID string, userID string, notif GameNotification) {
+func (m *MockGameNotifier) Pub(gameID string, userID string, notif service.GameNotification) {
 	m.mu.Lock()
 	m.PubCalled = true
 	m.mu.Unlock()
@@ -42,7 +45,7 @@ func (m *MockGameNotifier) Pub(gameID string, userID string, notif GameNotificat
 	}
 }
 
-func (m *MockGameNotifier) PubAll(gameID string, notif GameNotification) {
+func (m *MockGameNotifier) PubAll(gameID string, notif service.GameNotification) {
 	m.mu.Lock()
 	m.PubAllCalled = true
 	m.mu.Unlock()
@@ -51,7 +54,7 @@ func (m *MockGameNotifier) PubAll(gameID string, notif GameNotification) {
 	}
 }
 
-func (m *MockGameNotifier) Sub(gameID string, userID string) (chan GameNotification, func()) {
+func (m *MockGameNotifier) Sub(gameID string, userID string) (chan service.GameNotification, func()) {
 	return m.SubMock(gameID, userID)
 }
 

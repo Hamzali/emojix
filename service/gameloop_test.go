@@ -6,10 +6,11 @@ import (
 	"time"
 
 	"emojix/service"
+	"emojix/service/servicetest"
 )
 
 func TestGameLoop_Timeout(t *testing.T) {
-	fc := service.NewFakeClock()
+	fc := servicetest.NewFakeClock()
 	calls := make(chan string, 1)
 
 	gl := service.NewGameLoop(fc)
@@ -31,7 +32,7 @@ func TestGameLoop_Timeout(t *testing.T) {
 }
 
 func TestGameLoop_EndGameTurn(t *testing.T) {
-	fc := service.NewFakeClock()
+	fc := servicetest.NewFakeClock()
 	calls := make(chan string, 1)
 
 	gl := service.NewGameLoop(fc)
@@ -53,7 +54,7 @@ func TestGameLoop_EndGameTurn(t *testing.T) {
 }
 
 func TestGameLoop_TimeoutBeforeAllGuessed(t *testing.T) {
-	fc := service.NewFakeClock()
+	fc := servicetest.NewFakeClock()
 	calls := make(chan string, 1)
 
 	gl := service.NewGameLoop(fc)
@@ -84,7 +85,7 @@ func TestGameLoop_TimeoutBeforeAllGuessed(t *testing.T) {
 }
 
 func TestGameLoop_DoubleEndGameTurn(t *testing.T) {
-	fc := service.NewFakeClock()
+	fc := servicetest.NewFakeClock()
 	calls := make(chan struct{}, 4)
 
 	gl := service.NewGameLoop(fc)
@@ -111,7 +112,7 @@ func TestGameLoop_DoubleEndGameTurn(t *testing.T) {
 }
 
 func TestGameLoop_StartDuplicateNoOp(t *testing.T) {
-	fc := service.NewFakeClock()
+	fc := servicetest.NewFakeClock()
 	calls := make(chan string, 1)
 
 	gl := service.NewGameLoop(fc)
@@ -144,7 +145,7 @@ func TestGameLoop_StartDuplicateNoOp(t *testing.T) {
 }
 
 func TestGameLoop_AllGuessedAfterStop(t *testing.T) {
-	fc := service.NewFakeClock()
+	fc := servicetest.NewFakeClock()
 	calls := make(chan string, 1)
 
 	gl := service.NewGameLoop(fc)
@@ -164,7 +165,7 @@ func TestGameLoop_AllGuessedAfterStop(t *testing.T) {
 }
 
 func TestGameLoop_AllGuessedWrongGameID(t *testing.T) {
-	fc := service.NewFakeClock()
+	fc := servicetest.NewFakeClock()
 	calls := make(chan string, 1)
 
 	gl := service.NewGameLoop(fc)
@@ -188,7 +189,7 @@ func TestGameLoop_AllGuessedWrongGameID(t *testing.T) {
 }
 
 func TestGameLoop_StopAll(t *testing.T) {
-	fc := service.NewFakeClock()
+	fc := servicetest.NewFakeClock()
 	calls := make(chan string, 2)
 
 	gl := service.NewGameLoop(fc)
@@ -210,7 +211,7 @@ func TestGameLoop_StopAll(t *testing.T) {
 
 func TestGameLoop_MultipleTurns(t *testing.T) {
 	// One Start call, multiple turn cycles via EndGameTurn and timeout.
-	fc := service.NewFakeClock()
+	fc := servicetest.NewFakeClock()
 	calls := make(chan string, 3)
 
 	gl := service.NewGameLoop(fc)

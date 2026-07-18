@@ -3,8 +3,9 @@ package usecase_test
 import (
 	"context"
 	"emojix/model"
-	"emojix/repository"
+	"emojix/repository/repotest"
 	"emojix/service"
+	"emojix/service/servicetest"
 	"emojix/usecase"
 	"errors"
 	"fmt"
@@ -28,7 +29,7 @@ func assertPubNotCalled(t *testing.T, pubCh <-chan struct{}) {
 func TestJoinGame(t *testing.T) {
 
 	t.Run("adds player", func(t *testing.T) {
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{
 					ID:       "new-player-id",
@@ -37,7 +38,7 @@ func TestJoinGame(t *testing.T) {
 
 			},
 		}
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				err := assertCalledWithError("GameID", "some-game-id", id)
 				if err != nil {
@@ -61,7 +62,7 @@ func TestJoinGame(t *testing.T) {
 			},
 		}
 		pubCh := make(chan int)
-		mgns := &service.MockGameNotifier{
+		mgns := &servicetest.MockGameNotifier{
 			PubMock: func(gameID, userID string, notif service.GameNotification) {
 				pubCh <- 0
 				err := assertCalledWithError("GameID", "some-game-id", gameID)
@@ -85,7 +86,7 @@ func TestJoinGame(t *testing.T) {
 			},
 		}
 
-		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &service.MockGameLoop{}, service.NewRealClock())
+		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		ctx := context.Background()
 		err := emojiUsecase.JoinGame(ctx, "some-game-id", "new-player-id")
@@ -105,7 +106,7 @@ func TestJoinGame(t *testing.T) {
 	})
 
 	t.Run("fails to add if player is already in game and active", func(t *testing.T) {
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{
 					ID:       "other-player-id",
@@ -115,7 +116,7 @@ func TestJoinGame(t *testing.T) {
 			},
 		}
 
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return []model.Player{{ID: "other-player-id", Nickname: "OtherPlayer", State: model.ActivePlayerState}}, nil
 			},
@@ -124,13 +125,13 @@ func TestJoinGame(t *testing.T) {
 			},
 		}
 		pubCh := make(chan struct{}, 1)
-		mgns := &service.MockGameNotifier{
+		mgns := &servicetest.MockGameNotifier{
 			PubMock: func(gameID, userID string, notif service.GameNotification) {
 				pubCh <- struct{}{}
 			},
 		}
 
-		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &service.MockGameLoop{}, service.NewRealClock())
+		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		ctx := context.Background()
 		err := emojiUsecase.JoinGame(ctx, "some-game-id", "other-player-id")
@@ -146,7 +147,7 @@ func TestJoinGame(t *testing.T) {
 	})
 
 	t.Run("reactivates user joined and kicked before", func(t *testing.T) {
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{
 					ID:       "kicked-player-id",
@@ -156,7 +157,7 @@ func TestJoinGame(t *testing.T) {
 			},
 		}
 
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return []model.Player{
 					{ID: "kicked-player-id", Nickname: "KickedPlayer", State: model.InactivePlayerState},
@@ -172,12 +173,12 @@ func TestJoinGame(t *testing.T) {
 		}
 
 		pubCh := make(chan struct{}, 1)
-		mgns := &service.MockGameNotifier{
+		mgns := &servicetest.MockGameNotifier{
 			PubMock: func(gameID, userID string, notif service.GameNotification) {
 				pubCh <- struct{}{}
 			},
 		}
-		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &service.MockGameLoop{}, service.NewRealClock())
+		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		ctx := context.Background()
 		err := emojiUsecase.JoinGame(ctx, "some-game-id", "kicked-player-id")
@@ -206,7 +207,7 @@ func TestJoinGame(t *testing.T) {
 	})
 
 	t.Run("fails to add if room is full", func(t *testing.T) {
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{
 					ID:       "new-player-id",
@@ -217,7 +218,7 @@ func TestJoinGame(t *testing.T) {
 		}
 
 		addPlayerCalled := false
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				players := []model.Player{}
 				for i := range 10 {
@@ -235,13 +236,13 @@ func TestJoinGame(t *testing.T) {
 			},
 		}
 		pubCh := make(chan struct{}, 1)
-		mgns := &service.MockGameNotifier{
+		mgns := &servicetest.MockGameNotifier{
 			PubMock: func(gameID, userID string, notif service.GameNotification) {
 				pubCh <- struct{}{}
 			},
 		}
 
-		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &service.MockGameLoop{}, service.NewRealClock())
+		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, nil, nil, mgns, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		ctx := context.Background()
 		err := emojiUsecase.JoinGame(ctx, "some-game-id", "new-player-id")

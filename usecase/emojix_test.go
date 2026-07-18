@@ -4,7 +4,9 @@ import (
 	"context"
 	"emojix/model"
 	"emojix/repository"
+	"emojix/repository/repotest"
 	"emojix/service"
+	"emojix/service/servicetest"
 	"emojix/usecase"
 	"errors"
 	"fmt"
@@ -117,7 +119,7 @@ func TestGameState(t *testing.T) {
 
 	t.Run("initial empty state", func(t *testing.T) {
 		expectedGameID := "some-game-id"
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				errMsg := assertCalledWithError("GameID", expectedGameID, id)
 				if errMsg != nil {
@@ -155,7 +157,7 @@ func TestGameState(t *testing.T) {
 		}
 
 		expectedWordID := "some-word-id"
-		mwr := &repository.MockWordRepository{
+		mwr := &repotest.MockWordRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
 				errMsg := assertCalledWithError("WordID", expectedWordID, id)
 				if errMsg != nil {
@@ -172,7 +174,7 @@ func TestGameState(t *testing.T) {
 			mwr,
 			nil,
 			nil,
-			&service.MockGameLoop{},
+			&servicetest.MockGameLoop{},
 			service.NewRealClock(),
 		)
 
@@ -202,7 +204,7 @@ func TestGameState(t *testing.T) {
 	})
 
 	t.Run("should not mask word to user guessed", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{}
+		mgr := &repotest.MockGameRepository{}
 		mgr.GetPlayersMock = func(ctx context.Context, id string) ([]model.Player, error) {
 			return []model.Player{
 				{ID: "p-1", Nickname: "Player1"},
@@ -228,7 +230,7 @@ func TestGameState(t *testing.T) {
 			}, nil
 		}
 
-		mwr := &repository.MockWordRepository{
+		mwr := &repotest.MockWordRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
 				return model.Word{ID: "some-word-id", Word: "Some Word", Hint: "Some Hint"}, nil
 			},
@@ -240,7 +242,7 @@ func TestGameState(t *testing.T) {
 			mwr,
 			nil,
 			nil,
-			&service.MockGameLoop{},
+			&servicetest.MockGameLoop{},
 			service.NewRealClock(),
 		)
 
@@ -278,7 +280,7 @@ func TestGameState(t *testing.T) {
 
 	t.Run("should order messages from newest to oldest", func(t *testing.T) {
 		expectedGameID := "some-game-id"
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return []model.Player{{ID: "p-1", Nickname: "Player1"}}, nil
 			},
@@ -301,12 +303,12 @@ func TestGameState(t *testing.T) {
 				return []model.Score{}, nil
 			},
 		}
-		mwr := &repository.MockWordRepository{
+		mwr := &repotest.MockWordRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
 				return model.Word{ID: "some-word-id", Word: "Some Word", Hint: "Some Hint"}, nil
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		gameState, err := uc.GameState(context.Background(), expectedGameID, "p-1")
 		if err != nil {
@@ -325,7 +327,7 @@ func TestGameState(t *testing.T) {
 	})
 
 	t.Run("should sum up all scores in leaderboard", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return []model.Player{
 					{ID: "p-1", Nickname: "Player1"},
@@ -347,12 +349,12 @@ func TestGameState(t *testing.T) {
 				}, nil
 			},
 		}
-		mwr := &repository.MockWordRepository{
+		mwr := &repotest.MockWordRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
 				return model.Word{ID: "some-word-id", Word: "Some Word", Hint: "Some Hint"}, nil
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		gameState, err := uc.GameState(context.Background(), "some-game-id", "p-1")
 		if err != nil {
@@ -372,7 +374,7 @@ func TestGameState(t *testing.T) {
 	})
 
 	t.Run("turn should end when all players guessed the word", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return []model.Player{
 					{ID: "p-1", Nickname: "Player1"},
@@ -395,12 +397,12 @@ func TestGameState(t *testing.T) {
 				}, nil
 			},
 		}
-		mwr := &repository.MockWordRepository{
+		mwr := &repotest.MockWordRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
 				return model.Word{ID: "some-word-id", Word: "Some Word", Hint: "Some Hint"}, nil
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		gameState, err := uc.GameState(context.Background(), "some-game-id", "p-1")
 		if err != nil {
@@ -412,7 +414,7 @@ func TestGameState(t *testing.T) {
 	})
 
 	t.Run("GameRepository.GetPlayer Failure", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{}
+		mgr := &repotest.MockGameRepository{}
 		mockErr := errors.New("players failed")
 		mgr.GetPlayersMock = func(ctx context.Context, id string) ([]model.Player, error) {
 			return nil, mockErr
@@ -423,7 +425,7 @@ func TestGameState(t *testing.T) {
 			nil,
 			nil,
 			nil,
-			&service.MockGameLoop{},
+			&servicetest.MockGameLoop{},
 			service.NewRealClock(),
 		)
 
@@ -492,7 +494,7 @@ func TestGameUpdates(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			ch := make(chan service.GameNotification) // unbuffered: a send blocks until GameUpdates reads it
 			cleanupCount := 0
-			mgn := &service.MockGameNotifier{
+			mgn := &servicetest.MockGameNotifier{
 				SubMock: func(gameID, userID string) (chan service.GameNotification, func()) {
 					if err := assertCalledWithError("GameID", "some-game-id", gameID); err != nil {
 						t.Error(err)
@@ -503,7 +505,7 @@ func TestGameUpdates(t *testing.T) {
 					return ch, func() { cleanupCount++ }
 				},
 			}
-			uc := usecase.NewEmojixUsecase(nil, nil, nil, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
+			uc := usecase.NewEmojixUsecase(nil, nil, nil, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 			ctx, cancel := context.WithCancel(context.Background())
 			defer cancel()
@@ -554,10 +556,10 @@ func TestGameUpdates(t *testing.T) {
 }
 
 func TestGameState_TurnTimedOut(t *testing.T) {
-	clock := service.NewFakeClock()
+	clock := servicetest.NewFakeClock()
 	turnStartedAt := clock.Now()
 
-	mgr := &repository.MockGameRepository{
+	mgr := &repotest.MockGameRepository{
 		GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 			return []model.Player{{ID: "some-user-id", Nickname: "SomeNick"}}, nil
 		},
@@ -576,7 +578,7 @@ func TestGameState_TurnTimedOut(t *testing.T) {
 		},
 	}
 
-	mwr := &repository.MockWordRepository{
+	mwr := &repotest.MockWordRepository{
 		FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
 			return model.Word{ID: "some-word-id", Word: "Some Word", Hint: "Some Hint"}, nil
 		},
@@ -591,7 +593,7 @@ func TestGameState_TurnTimedOut(t *testing.T) {
 		mwr,
 		nil,
 		nil,
-		&service.MockGameLoop{},
+		&servicetest.MockGameLoop{},
 		clock,
 	)
 
@@ -605,14 +607,14 @@ func TestGameState_TurnTimedOut(t *testing.T) {
 	}
 }
 
-func newInitGameUsecase(t *testing.T, mur repository.UserRepository, mgr *repository.MockGameRepository, mwr *repository.MockWordRepository, gl *service.MockGameLoop, commitErr error, newErr error) (usecase.EmojixUsecase, *repository.MockUnitOfWork) {
+func newInitGameUsecase(t *testing.T, mur repository.UserRepository, mgr *repotest.MockGameRepository, mwr *repotest.MockWordRepository, gl *servicetest.MockGameLoop, commitErr error, newErr error) (usecase.EmojixUsecase, *repotest.MockUnitOfWork) {
 	t.Helper()
-	uow := &repository.MockUnitOfWork{
+	uow := &repotest.MockUnitOfWork{
 		GameRepositoryMock: mgr,
 		CommitMock:         func() error { return commitErr },
 		RollbackMock:       func() error { return nil },
 	}
-	factory := &repository.MockUnitOfWorkFactory{
+	factory := &repotest.MockUnitOfWorkFactory{
 		NewMock: func(ctx context.Context) (repository.UnitOfWork, error) {
 			if newErr != nil {
 				return nil, newErr
@@ -628,7 +630,7 @@ func TestInitGame(t *testing.T) {
 	const userID = "init-user-id"
 
 	t.Run("happy path starts loop after commit", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			CreateMock: func(ctx context.Context) (model.Game, error) {
 				return model.Game{ID: "game-1"}, nil
 			},
@@ -651,7 +653,7 @@ func TestInitGame(t *testing.T) {
 				return model.GameTurn{ID: "turn-1"}, nil
 			},
 		}
-		mwr := &repository.MockWordRepository{
+		mwr := &repotest.MockWordRepository{
 			GetAllMock: func(ctx context.Context) ([]model.Word, error) {
 				return []model.Word{{ID: "w1", Word: "Alpha"}, {ID: "w2", Word: "Beta"}}, nil
 			},
@@ -661,7 +663,7 @@ func TestInitGame(t *testing.T) {
 		var startGameID string
 		var startDur time.Duration
 		startCalled := make(chan struct{}, 1)
-		gl := &service.MockGameLoop{
+		gl := &servicetest.MockGameLoop{
 			StartMock: func(ctx context.Context, gameID string, duration time.Duration) {
 				if !committed {
 					t.Error("gameLoop.Start called before uow.Commit")
@@ -708,9 +710,9 @@ func TestInitGame(t *testing.T) {
 	})
 
 	t.Run("uow.New fails", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{}
-		mwr := &repository.MockWordRepository{}
-		gl := &service.MockGameLoop{}
+		mgr := &repotest.MockGameRepository{}
+		mwr := &repotest.MockWordRepository{}
+		gl := &servicetest.MockGameLoop{}
 		newErr := errors.New("uow new failed")
 		uc, _ := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, newErr)
 
@@ -727,13 +729,13 @@ func TestInitGame(t *testing.T) {
 	})
 
 	t.Run("gameRepo.Create fails rolls back and does not start", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			CreateMock: func(ctx context.Context) (model.Game, error) {
 				return model.Game{}, errors.New("create failed")
 			},
 		}
-		mwr := &repository.MockWordRepository{}
-		gl := &service.MockGameLoop{}
+		mwr := &repotest.MockWordRepository{}
+		gl := &servicetest.MockGameLoop{}
 		uc, uow := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, nil)
 
 		_, err := uc.InitGame(context.Background(), userID)
@@ -755,7 +757,7 @@ func TestInitGame(t *testing.T) {
 	})
 
 	t.Run("AddTurn fails rolls back and does not start", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			CreateMock: func(ctx context.Context) (model.Game, error) {
 				return model.Game{ID: "game-2"}, nil
 			},
@@ -764,12 +766,12 @@ func TestInitGame(t *testing.T) {
 				return model.GameTurn{}, errors.New("addturn failed")
 			},
 		}
-		mwr := &repository.MockWordRepository{
+		mwr := &repotest.MockWordRepository{
 			GetAllMock: func(ctx context.Context) ([]model.Word, error) {
 				return []model.Word{{ID: "w1", Word: "Alpha"}}, nil
 			},
 		}
-		gl := &service.MockGameLoop{}
+		gl := &servicetest.MockGameLoop{}
 		uc, uow := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, nil)
 
 		_, err := uc.InitGame(context.Background(), userID)
@@ -788,7 +790,7 @@ func TestInitGame(t *testing.T) {
 	})
 
 	t.Run("empty word list returns ErrNoWords", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			CreateMock: func(ctx context.Context) (model.Game, error) {
 				return model.Game{ID: "game-3"}, nil
 			},
@@ -798,12 +800,12 @@ func TestInitGame(t *testing.T) {
 				return model.GameTurn{}, nil
 			},
 		}
-		mwr := &repository.MockWordRepository{
+		mwr := &repotest.MockWordRepository{
 			GetAllMock: func(ctx context.Context) ([]model.Word, error) {
 				return []model.Word{}, nil
 			},
 		}
-		gl := &service.MockGameLoop{}
+		gl := &servicetest.MockGameLoop{}
 		uc, uow := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, nil)
 
 		_, err := uc.InitGame(context.Background(), userID)
@@ -827,7 +829,7 @@ func TestInitUser(t *testing.T) {
 		createCalled := make(chan struct{}, 1)
 		var gotID string
 		var gotNick string
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			CreateOrUpdateMock: func(ctx context.Context, id string, params repository.UserCreateOrUpdateParams) error {
 				gotID = id
 				gotNick = params.Nickname
@@ -835,7 +837,7 @@ func TestInitUser(t *testing.T) {
 				return nil
 			},
 		}
-		uc := usecase.NewEmojixUsecase(mur, nil, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(mur, nil, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		user, err := uc.InitUser(context.Background())
 		if err != nil {
@@ -882,12 +884,12 @@ func TestInitUser(t *testing.T) {
 	})
 
 	t.Run("CreateOrUpdate fails propagates", func(t *testing.T) {
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			CreateOrUpdateMock: func(ctx context.Context, id string, params repository.UserCreateOrUpdateParams) error {
 				return errors.New("persist failed")
 			},
 		}
-		uc := usecase.NewEmojixUsecase(mur, nil, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(mur, nil, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		_, err := uc.InitUser(context.Background())
 		if err == nil {
@@ -898,13 +900,13 @@ func TestInitUser(t *testing.T) {
 
 // --- T08: TestGuess helpers ---
 
-func newGuessUsecase(mur repository.UserRepository, mgr *repository.MockGameRepository, mwr *repository.MockWordRepository, mgn *service.MockGameNotifier, gl *service.MockGameLoop, commitErr error) (usecase.EmojixUsecase, *repository.MockUnitOfWork) {
-	uow := &repository.MockUnitOfWork{
+func newGuessUsecase(mur repository.UserRepository, mgr *repotest.MockGameRepository, mwr *repotest.MockWordRepository, mgn *servicetest.MockGameNotifier, gl *servicetest.MockGameLoop, commitErr error) (usecase.EmojixUsecase, *repotest.MockUnitOfWork) {
+	uow := &repotest.MockUnitOfWork{
 		GameRepositoryMock: mgr,
 		CommitMock:         func() error { return commitErr },
 		RollbackMock:       func() error { return nil },
 	}
-	factory := &repository.MockUnitOfWorkFactory{
+	factory := &repotest.MockUnitOfWorkFactory{
 		NewMock: func(ctx context.Context) (repository.UnitOfWork, error) {
 			return uow, nil
 		},
@@ -955,16 +957,16 @@ func TestGuess(t *testing.T) {
 	)
 
 	// baseWordRepo returns a fixed word for the latest turn.
-	baseWordRepo := func() *repository.MockWordRepository {
-		return &repository.MockWordRepository{
+	baseWordRepo := func() *repotest.MockWordRepository {
+		return &repotest.MockWordRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
 				return model.Word{ID: wordID, Word: theWord, Hint: "h"}, nil
 			},
 		}
 	}
 	// baseGameRepo wires the latest turn + a SendMessage that returns a message.
-	baseGameRepo := func() *repository.MockGameRepository {
-		return &repository.MockGameRepository{
+	baseGameRepo := func() *repotest.MockGameRepository {
+		return &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				if err := assertCalledWithError("GameID", gameID, id); err != nil {
 					t.Error(err)
@@ -981,16 +983,16 @@ func TestGuess(t *testing.T) {
 		mgr := baseGameRepo()
 		mgr.GetPlayersMock = func(ctx context.Context, id string) ([]model.Player, error) { return nil, nil }
 		mgr.GetScoresMock = func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil }
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{ID: userID, Nickname: "Nick1"}, nil
 			},
 		}
 		pubCh := make(chan service.GameNotification, 2)
-		mgn := &service.MockGameNotifier{
+		mgn := &servicetest.MockGameNotifier{
 			PubMock: func(g, u string, n service.GameNotification) { pubCh <- n },
 		}
-		gl := &service.MockGameLoop{}
+		gl := &servicetest.MockGameLoop{}
 		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
 
 		if err := uc.Guess(context.Background(), gameID, userID, "nope"); err != nil {
@@ -1029,14 +1031,14 @@ func TestGuess(t *testing.T) {
 			scoredPoint = point
 			return nil
 		}
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{ID: userID, Nickname: "Nick1"}, nil
 			},
 		}
 		pubCh := make(chan service.GameNotification, 2)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
-		gl := &service.MockGameLoop{}
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		gl := &servicetest.MockGameLoop{}
 		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
 
 		if err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
@@ -1079,14 +1081,14 @@ func TestGuess(t *testing.T) {
 		}
 		endGameTurnCalled := make(chan struct{}, 1)
 		mgr.AddScoreMock = func(ctx context.Context, g, u, msg, turn string, point int) error { return nil }
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{ID: userID, Nickname: "Nick1"}, nil
 			},
 		}
 		pubCh := make(chan service.GameNotification, 2)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
-		gl := &service.MockGameLoop{
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		gl := &servicetest.MockGameLoop{
 			EndGameTurnMock: func(g string) {
 				if err := assertCalledWithError("GameID", gameID, g); err != nil {
 					t.Error(err)
@@ -1124,14 +1126,14 @@ func TestGuess(t *testing.T) {
 			t.Error("AddScore must not be called for a duplicate correct guess")
 			return nil
 		}
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{ID: userID, Nickname: "Nick1"}, nil
 			},
 		}
 		pubCh := make(chan service.GameNotification, 2)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
-		gl := &service.MockGameLoop{
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		gl := &servicetest.MockGameLoop{
 			EndGameTurnMock: func(g string) { t.Error("EndGameTurn must not be called on a duplicate guess") },
 		}
 		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
@@ -1150,14 +1152,14 @@ func TestGuess(t *testing.T) {
 
 	t.Run("userRepo.FindByID fails propagates without writes or pub", func(t *testing.T) {
 		mgr := baseGameRepo()
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{}, errors.New("user not found")
 			},
 		}
 		pubCh := make(chan service.GameNotification, 1)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
-		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &service.MockGameLoop{}, nil)
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &servicetest.MockGameLoop{}, nil)
 
 		err := uc.Guess(context.Background(), gameID, userID, theWord)
 		if err == nil {
@@ -1170,19 +1172,19 @@ func TestGuess(t *testing.T) {
 	})
 
 	t.Run("GetLatestTurn fails propagates without writes or pub", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				return model.GameTurn{}, errors.New("turn fetch failed")
 			},
 		}
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{ID: userID, Nickname: "Nick1"}, nil
 			},
 		}
 		pubCh := make(chan service.GameNotification, 1)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
-		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &service.MockGameLoop{}, nil)
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &servicetest.MockGameLoop{}, nil)
 
 		err := uc.Guess(context.Background(), gameID, userID, theWord)
 		if err == nil {
@@ -1199,14 +1201,14 @@ func TestGuess(t *testing.T) {
 		mgr.SendMessageMock = func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
 			return model.Message{}, errors.New("sendmessage failed")
 		}
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{ID: userID, Nickname: "Nick1"}, nil
 			},
 		}
 		pubCh := make(chan service.GameNotification, 1)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
-		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &service.MockGameLoop{}, nil)
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &servicetest.MockGameLoop{}, nil)
 
 		err := uc.Guess(context.Background(), gameID, userID, theWord)
 		if err == nil {
@@ -1220,15 +1222,15 @@ func TestGuess(t *testing.T) {
 
 	t.Run("wrong guess with commit failure does not pub", func(t *testing.T) {
 		mgr := baseGameRepo()
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{ID: userID, Nickname: "Nick1"}, nil
 			},
 		}
 		pubCh := make(chan service.GameNotification, 1)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
 		commitErr := errors.New("commit failed")
-		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &service.MockGameLoop{}, commitErr)
+		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &servicetest.MockGameLoop{}, commitErr)
 		_ = uow
 
 		err := uc.Guess(context.Background(), gameID, userID, "nope")
@@ -1256,14 +1258,14 @@ func TestGuess(t *testing.T) {
 		}
 		endGameTurnCalled := make(chan struct{}, 1)
 		mgr.AddScoreMock = func(ctx context.Context, g, u, msg, turn string, point int) error { return nil }
-		mur := &repository.MockUserRepository{
+		mur := &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				return model.User{ID: userID, Nickname: "Nick1"}, nil
 			},
 		}
 		pubCh := make(chan service.GameNotification, 2)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
-		gl := &service.MockGameLoop{
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		gl := &servicetest.MockGameLoop{
 			EndGameTurnMock: func(g string) { endGameTurnCalled <- struct{}{} },
 		}
 		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
@@ -1288,8 +1290,8 @@ func TestMessage(t *testing.T) {
 		userID = "p-1"
 		turnID = "turn-1"
 	)
-	murFor := func(nick string, err error) *repository.MockUserRepository {
-		return &repository.MockUserRepository{
+	murFor := func(nick string, err error) *repotest.MockUserRepository {
+		return &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
 				if err := assertCalledWithError("UserID", userID, id); err != nil {
 					t.Error(err)
@@ -1300,7 +1302,7 @@ func TestMessage(t *testing.T) {
 	}
 
 	t.Run("happy path persists and pubs raw content; ParseData round-trips", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				if err := assertCalledWithError("GameID", gameID, id); err != nil {
 					t.Error(err)
@@ -1324,7 +1326,7 @@ func TestMessage(t *testing.T) {
 			},
 		}
 		pubCh := make(chan service.GameNotification, 1)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) {
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) {
 			if err := assertCalledWithError("GameID", gameID, g); err != nil {
 				t.Error(err)
 			}
@@ -1333,7 +1335,7 @@ func TestMessage(t *testing.T) {
 			}
 			pubCh <- n
 		}}
-		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		if err := uc.Message(context.Background(), gameID, userID, "hello"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1365,7 +1367,7 @@ func TestMessage(t *testing.T) {
 		// type the literal word and it is broadcast unmasked). Pinning current
 		// behavior here; masking is a behavior decision tracked as backlog.
 		// TODO(backlog): mask chat content matching the secret word in Message.
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				return model.GameTurn{ID: turnID, WordID: "w-1"}, nil
 			},
@@ -1374,14 +1376,14 @@ func TestMessage(t *testing.T) {
 			},
 		}
 		// Provided for documentation; Message does not consult the word repo.
-		mwr := &repository.MockWordRepository{
+		mwr := &repotest.MockWordRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
 				return model.Word{ID: "w-1", Word: "Secret"}, nil
 			},
 		}
 		pubCh := make(chan service.GameNotification, 1)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
-		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, mwr, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, mwr, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		if err := uc.Message(context.Background(), gameID, userID, "Secret"); err != nil {
 			t.Fatalf("unexpected error: %v", err)
@@ -1393,7 +1395,7 @@ func TestMessage(t *testing.T) {
 	})
 
 	t.Run("GetLatestTurn fails propagates without SendMessage or pub", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				return model.GameTurn{}, errors.New("turn failed")
 			},
@@ -1403,8 +1405,8 @@ func TestMessage(t *testing.T) {
 			},
 		}
 		pubCh := make(chan service.GameNotification, 1)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
-		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		err := uc.Message(context.Background(), gameID, userID, "hello")
 		if err == nil {
@@ -1417,7 +1419,7 @@ func TestMessage(t *testing.T) {
 	})
 
 	t.Run("userRepo.FindByID fails propagates without SendMessage or pub", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				return model.GameTurn{ID: turnID}, nil
 			},
@@ -1427,8 +1429,8 @@ func TestMessage(t *testing.T) {
 			},
 		}
 		pubCh := make(chan service.GameNotification, 1)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
-		uc := usecase.NewEmojixUsecase(murFor("", errors.New("user not found")), mgr, nil, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc := usecase.NewEmojixUsecase(murFor("", errors.New("user not found")), mgr, nil, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		err := uc.Message(context.Background(), gameID, userID, "hello")
 		if err == nil {
@@ -1441,7 +1443,7 @@ func TestMessage(t *testing.T) {
 	})
 
 	t.Run("SendMessage fails propagates without pub", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				return model.GameTurn{ID: turnID}, nil
 			},
@@ -1450,8 +1452,8 @@ func TestMessage(t *testing.T) {
 			},
 		}
 		pubCh := make(chan service.GameNotification, 1)
-		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
-		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		err := uc.Message(context.Background(), gameID, userID, "hello")
 		if err == nil {
@@ -1467,7 +1469,7 @@ func TestLeaderboard(t *testing.T) {
 	const gameID = "game-1"
 
 	t.Run("happy path aggregates scores and marks Me/guessed on latest turn", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return []model.Player{
 					{ID: "p-1", Nickname: "Nick1", State: model.ActivePlayerState},
@@ -1486,7 +1488,7 @@ func TestLeaderboard(t *testing.T) {
 				return model.GameTurn{ID: "latest"}, nil
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		entries, err := uc.Leaderboard(context.Background(), gameID, "p-1")
 		if err != nil {
@@ -1508,7 +1510,7 @@ func TestLeaderboard(t *testing.T) {
 	})
 
 	t.Run("user not in game returns error and empty slice", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return []model.Player{
 					{ID: "p-1", Nickname: "Nick1", State: model.ActivePlayerState},
@@ -1518,7 +1520,7 @@ func TestLeaderboard(t *testing.T) {
 			GetScoresMock:     func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil },
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) { return model.GameTurn{ID: "latest"}, nil },
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		entries, err := uc.Leaderboard(context.Background(), gameID, "p-3")
 		if err == nil {
@@ -1530,7 +1532,7 @@ func TestLeaderboard(t *testing.T) {
 	})
 
 	t.Run("inactive players are excluded", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return []model.Player{
 					{ID: "p-1", Nickname: "Nick1", State: model.ActivePlayerState},
@@ -1540,7 +1542,7 @@ func TestLeaderboard(t *testing.T) {
 			GetScoresMock:     func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil },
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) { return model.GameTurn{ID: "latest"}, nil },
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		entries, err := uc.Leaderboard(context.Background(), gameID, "p-1")
 		if err != nil {
@@ -1555,12 +1557,12 @@ func TestLeaderboard(t *testing.T) {
 	})
 
 	t.Run("GetPlayers fails propagates", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return nil, errors.New("players failed")
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 		_, err := uc.Leaderboard(context.Background(), gameID, "p-1")
 		if err == nil {
 			t.Fatal("expected error from GetPlayers")
@@ -1568,7 +1570,7 @@ func TestLeaderboard(t *testing.T) {
 	})
 
 	t.Run("GetScores fails propagates", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return []model.Player{{ID: "p-1", Nickname: "Nick1", State: model.ActivePlayerState}}, nil
 			},
@@ -1576,7 +1578,7 @@ func TestLeaderboard(t *testing.T) {
 				return nil, errors.New("scores failed")
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 		_, err := uc.Leaderboard(context.Background(), gameID, "p-1")
 		if err == nil {
 			t.Fatal("expected error from GetScores")
@@ -1584,7 +1586,7 @@ func TestLeaderboard(t *testing.T) {
 	})
 
 	t.Run("GetLatestTurn fails propagates", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return []model.Player{{ID: "p-1", Nickname: "Nick1", State: model.ActivePlayerState}}, nil
 			},
@@ -1593,7 +1595,7 @@ func TestLeaderboard(t *testing.T) {
 				return model.GameTurn{}, errors.New("turn failed")
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 		_, err := uc.Leaderboard(context.Background(), gameID, "p-1")
 		if err == nil {
 			t.Fatal("expected error from GetLatestTurn")
@@ -1608,8 +1610,8 @@ func TestGameWord(t *testing.T) {
 		wordID = "w-1"
 		turnID = "t-1"
 	)
-	wordRepoFor := func(w model.Word) *repository.MockWordRepository {
-		return &repository.MockWordRepository{
+	wordRepoFor := func(w model.Word) *repotest.MockWordRepository {
+		return &repotest.MockWordRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
 				if err := assertCalledWithError("WordID", wordID, id); err != nil {
 					t.Error(err)
@@ -1620,7 +1622,7 @@ func TestGameWord(t *testing.T) {
 	}
 
 	t.Run("not guessed returns masked word", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				return model.GameTurn{ID: turnID, WordID: wordID}, nil
 			},
@@ -1629,7 +1631,7 @@ func TestGameWord(t *testing.T) {
 				return []model.Score{{PlayerID: "p-2", TurnID: turnID}}, nil
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Secret"}), nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Secret"}), nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		got, err := uc.GameWord(context.Background(), gameID, userID)
 		if err != nil {
@@ -1641,7 +1643,7 @@ func TestGameWord(t *testing.T) {
 	})
 
 	t.Run("guessed returns raw word", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				return model.GameTurn{ID: turnID, WordID: wordID}, nil
 			},
@@ -1649,7 +1651,7 @@ func TestGameWord(t *testing.T) {
 				return []model.Score{{PlayerID: userID, TurnID: turnID}}, nil
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Secret"}), nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Secret"}), nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		got, err := uc.GameWord(context.Background(), gameID, userID)
 		if err != nil {
@@ -1665,13 +1667,13 @@ func TestGameWord(t *testing.T) {
 		// This documents the limitation; a better masking scheme is backlog.
 		// TODO(backlog): replace the `\w`-based mask with a scheme that hides
 		// the whole word regardless of character class.
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				return model.GameTurn{ID: turnID, WordID: wordID}, nil
 			},
 			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil },
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Hi 👋"}), nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Hi 👋"}), nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 
 		got, err := uc.GameWord(context.Background(), gameID, userID)
 		if err != nil {
@@ -1683,12 +1685,12 @@ func TestGameWord(t *testing.T) {
 	})
 
 	t.Run("GetLatestTurn fails returns empty string and error", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				return model.GameTurn{}, errors.New("turn failed")
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 		got, err := uc.GameWord(context.Background(), gameID, userID)
 		if err == nil {
 			t.Fatal("expected error from GetLatestTurn")
@@ -1699,17 +1701,17 @@ func TestGameWord(t *testing.T) {
 	})
 
 	t.Run("wordRepo.FindByID fails returns empty string and error", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				return model.GameTurn{ID: turnID, WordID: wordID}, nil
 			},
 		}
-		mwr := &repository.MockWordRepository{
+		mwr := &repotest.MockWordRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
 				return model.Word{}, errors.New("word failed")
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 		got, err := uc.GameWord(context.Background(), gameID, userID)
 		if err == nil {
 			t.Fatal("expected error from FindByID")
@@ -1720,7 +1722,7 @@ func TestGameWord(t *testing.T) {
 	})
 
 	t.Run("GetScores fails returns empty string and error", func(t *testing.T) {
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
 				return model.GameTurn{ID: turnID, WordID: wordID}, nil
 			},
@@ -1728,7 +1730,7 @@ func TestGameWord(t *testing.T) {
 				return nil, errors.New("scores failed")
 			},
 		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Secret"}), nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+		uc := usecase.NewEmojixUsecase(nil, mgr, wordRepoFor(model.Word{ID: wordID, Word: "Secret"}), nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
 		got, err := uc.GameWord(context.Background(), gameID, userID)
 		if err == nil {
 			t.Fatal("expected error from GetScores")
@@ -1746,7 +1748,7 @@ func TestGameWord(t *testing.T) {
 // iteration. This sidesteps the registration race (handler calls clock.After
 // inside its own goroutine) without time.Sleep. done closes when the handler
 // returns.
-func driveClock(t *testing.T, fc *service.FakeClock, done <-chan struct{}) {
+func driveClock(t *testing.T, fc *servicetest.FakeClock, done <-chan struct{}) {
 	t.Helper()
 	for i := 0; i < 10000; i++ {
 		select {
@@ -1775,25 +1777,25 @@ func TestOnTurnEnd(t *testing.T) {
 		stopCh       chan string
 	}
 
-	newUsecase := func(t *testing.T, addTurnFn func(call int) (model.GameTurn, error), getAllFn func(call int) ([]model.Word, error), stopAtAll bool) (*service.MockGameLoop, *service.FakeClock, *onTurnEndMocks) {
+	newUsecase := func(t *testing.T, addTurnFn func(call int) (model.GameTurn, error), getAllFn func(call int) ([]model.Word, error), stopAtAll bool) (*servicetest.MockGameLoop, *servicetest.FakeClock, *onTurnEndMocks) {
 		t.Helper()
 		m := &onTurnEndMocks{
 			pubAllCh: make(chan struct{}, 4),
 			stopCh:   make(chan string, 4),
 		}
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			AddTurnMock: func(ctx context.Context, g, w string) (model.GameTurn, error) {
 				m.addTurnCount++
 				return addTurnFn(m.addTurnCount)
 			},
 		}
-		mwr := &repository.MockWordRepository{
+		mwr := &repotest.MockWordRepository{
 			GetAllMock: func(ctx context.Context) ([]model.Word, error) {
 				m.getAllCount++
 				return getAllFn(m.getAllCount)
 			},
 		}
-		mgn := &service.MockGameNotifier{
+		mgn := &servicetest.MockGameNotifier{
 			PubAllMock: func(g string, n service.GameNotification) {
 				if err := assertCalledWithError("GameID", gameID, g); err != nil {
 					t.Error(err)
@@ -1805,14 +1807,14 @@ func TestOnTurnEnd(t *testing.T) {
 				m.pubAllCh <- struct{}{}
 			},
 		}
-		gl := &service.MockGameLoop{
+		gl := &servicetest.MockGameLoop{
 			StopGameMock: func(g string) {
 				m.stopCount++
 				m.stopGameIDs = append(m.stopGameIDs, g)
 				m.stopCh <- g
 			},
 		}
-		clock := service.NewFakeClock()
+		clock := servicetest.NewFakeClock()
 		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, mgn, gl, clock)
 		_ = uc // NewEmojixUsecase installs the OnTurnEndHandler on gl
 		return gl, clock, m
@@ -1820,7 +1822,7 @@ func TestOnTurnEnd(t *testing.T) {
 
 	// runHandler spawns the captured handler (installed by NewEmojixUsecase) in
 	// a goroutine and drives the fake clock until it returns.
-	runHandler := func(t *testing.T, gl *service.MockGameLoop, clock *service.FakeClock) {
+	runHandler := func(t *testing.T, gl *servicetest.MockGameLoop, clock *servicetest.FakeClock) {
 		t.Helper()
 		done := make(chan struct{})
 		go func() {

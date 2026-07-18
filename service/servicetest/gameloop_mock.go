@@ -1,22 +1,23 @@
-package service
+package servicetest
 
 import (
 	"context"
+	"emojix/service"
 	"time"
 )
 
-// MockGameLoop is a mock implementation of GameLoop for testing.
-// Embeds the GameLoop interface for default no-op on unimplemented methods.
+// MockGameLoop is a mock implementation of service.GameLoop for testing.
+// Embeds the service.GameLoop interface for default no-op on unimplemented methods.
 type MockGameLoop struct {
-	GameLoop
+	service.GameLoop
 
 	StartMock                 func(ctx context.Context, gameID string, duration time.Duration)
 	StartCalled               bool
 	EndGameTurnMock           func(gameID string)
 	EndGameTurnCalled         bool
-	SetOnTurnEndHandlerMock   func(handler OnTurnEndHandler)
+	SetOnTurnEndHandlerMock   func(handler service.OnTurnEndHandler)
 	SetOnTurnEndHandlerCalled bool
-	OnTurnEndHandler          OnTurnEndHandler
+	OnTurnEndHandler          service.OnTurnEndHandler
 	StopGameMock              func(gameID string)
 	StopGameCalled            bool
 	StopMock                  func()
@@ -37,7 +38,7 @@ func (m *MockGameLoop) EndGameTurn(gameID string) {
 	}
 }
 
-func (m *MockGameLoop) SetOnTurnEndHandler(handler OnTurnEndHandler) {
+func (m *MockGameLoop) SetOnTurnEndHandler(handler service.OnTurnEndHandler) {
 	m.SetOnTurnEndHandlerCalled = true
 	m.OnTurnEndHandler = handler
 	if m.SetOnTurnEndHandlerMock != nil {

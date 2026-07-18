@@ -1,12 +1,21 @@
-package repository
+// Package repotest holds test doubles for the repository package. It is a
+// separate package (like net/http/httptest) so the doubles are importable by
+// other packages' tests without shipping them in the production binary.
+//
+// Concurrency: the *Called flags are plain bools with no mutex. This is safe
+// because production code only ever calls repository methods synchronously
+// (only GameNotifier.Pub is spawned in a goroutine). If that ever changes,
+// guard the flags the way servicetest.MockGameNotifier does.
+package repotest
 
 import (
 	"context"
 	"emojix/model"
+	"emojix/repository"
 )
 
 type MockGameRepository struct {
-	GameRepository
+	repository.GameRepository
 	FindByIDMock         func(ctx context.Context, id string) (model.Game, error)
 	CreateMock           func(ctx context.Context) (model.Game, error)
 	CreateCalled         bool
@@ -69,7 +78,7 @@ func (m *MockGameRepository) AddScore(ctx context.Context, gameID string, userID
 }
 
 type MockWordRepository struct {
-	WordRepository
+	repository.WordRepository
 	FindByIDMock func(ctx context.Context, id string) (model.Word, error)
 	GetAllMock   func(ctx context.Context) ([]model.Word, error)
 }
@@ -83,9 +92,9 @@ func (m *MockWordRepository) GetAll(ctx context.Context) ([]model.Word, error) {
 }
 
 type MockUserRepository struct {
-	UserRepository
+	repository.UserRepository
 	FindByIDMock         func(ctx context.Context, id string) (model.User, error)
-	CreateOrUpdateMock   func(ctx context.Context, id string, params UserCreateOrUpdateParams) error
+	CreateOrUpdateMock   func(ctx context.Context, id string, params repository.UserCreateOrUpdateParams) error
 	CreateOrUpdateCalled bool
 }
 
@@ -93,13 +102,13 @@ func (m *MockUserRepository) FindByID(ctx context.Context, id string) (model.Use
 	return m.FindByIDMock(ctx, id)
 }
 
-func (m *MockUserRepository) CreateOrUpdate(ctx context.Context, id string, params UserCreateOrUpdateParams) error {
+func (m *MockUserRepository) CreateOrUpdate(ctx context.Context, id string, params repository.UserCreateOrUpdateParams) error {
 	m.CreateOrUpdateCalled = true
 	return m.CreateOrUpdateMock(ctx, id, params)
 }
 
 type MockUnitOfWork struct {
-	UnitOfWork
+	repository.UnitOfWork
 	GameRepositoryMock *MockGameRepository
 	RollbackMock       func() error
 	CommitMock         func() error
@@ -107,30 +116,30 @@ type MockUnitOfWork struct {
 	CommitCalled       bool
 }
 
-// GameRepository implements UnitOfWork.
-func (uow *MockUnitOfWork) GameRepository() GameRepository {
+// GameRepository implements repository.UnitOfWork.
+func (uow *MockUnitOfWork) GameRepository() repository.GameRepository {
 	return uow.GameRepositoryMock
 }
 
-// Commit implements UnitOfWork.
+// Commit implements repository.UnitOfWork.
 func (uow *MockUnitOfWork) Commit() error {
 	uow.CommitCalled = true
 	return uow.CommitMock()
 }
 
-// Rollback implements UnitOfWork.
+// Rollback implements repository.UnitOfWork.
 func (uow *MockUnitOfWork) Rollback() error {
 	uow.RollbackCalled = true
 	return uow.RollbackMock()
 }
 
 type MockUnitOfWorkFactory struct {
-	UnitOfWorkFactory
-	NewMock func(ctx context.Context) (UnitOfWork, error)
+	repository.UnitOfWorkFactory
+	NewMock func(ctx context.Context) (repository.UnitOfWork, error)
 }
 
-// New implements UnitOfWorkFactory.
-func (f *MockUnitOfWorkFactory) New(ctx context.Context) (UnitOfWork, error) {
+// New implements repository.UnitOfWorkFactory.
+func (f *MockUnitOfWorkFactory) New(ctx context.Context) (repository.UnitOfWork, error) {
 	if f.NewMock != nil {
 		return f.NewMock(ctx)
 	}

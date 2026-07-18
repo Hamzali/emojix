@@ -3,8 +3,9 @@ package usecase_test
 import (
 	"context"
 	"emojix/model"
-	"emojix/repository"
+	"emojix/repository/repotest"
 	"emojix/service"
+	"emojix/service/servicetest"
 	"emojix/usecase"
 	"testing"
 	"time"
@@ -22,7 +23,7 @@ func TestKickInactiveUser(t *testing.T) {
 
 	t.Run("kicks inactive user", func(t *testing.T) {
 		pubCh := make(chan int)
-		mgn := &service.MockGameNotifier{
+		mgn := &servicetest.MockGameNotifier{
 			SubsMock: subsMock,
 			PubMock: func(gameID, userID string, notif service.GameNotification) {
 				err := assertCalledWithError("GameID", "game-id", gameID)
@@ -49,7 +50,7 @@ func TestKickInactiveUser(t *testing.T) {
 			},
 		}
 
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			SetPlayerStateMock: func(ctx context.Context, gameID, userID, state model.PlayerState) error {
 				err := assertCalledWithError("GameID", "game-id", gameID)
 				if err != nil {
@@ -72,7 +73,7 @@ func TestKickInactiveUser(t *testing.T) {
 			nil,
 			nil,
 			mgn,
-			&service.MockGameLoop{},
+			&servicetest.MockGameLoop{},
 			service.NewRealClock(),
 		)
 
@@ -98,14 +99,14 @@ func TestKickInactiveUser(t *testing.T) {
 
 	t.Run("keeps user if its active", func(t *testing.T) {
 		pubCh := make(chan struct{}, 1)
-		mgn := &service.MockGameNotifier{
+		mgn := &servicetest.MockGameNotifier{
 			SubsMock: subsMock,
 			PubMock: func(gameID, userID string, notif service.GameNotification) {
 				pubCh <- struct{}{}
 			},
 		}
 
-		mgr := &repository.MockGameRepository{
+		mgr := &repotest.MockGameRepository{
 			SetPlayerStateMock: func(ctx context.Context, gameID, userID, state model.PlayerState) error {
 				return nil
 			},
@@ -116,7 +117,7 @@ func TestKickInactiveUser(t *testing.T) {
 			nil,
 			nil,
 			mgn,
-			&service.MockGameLoop{},
+			&servicetest.MockGameLoop{},
 			service.NewRealClock(),
 		)
 

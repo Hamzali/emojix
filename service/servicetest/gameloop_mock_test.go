@@ -1,7 +1,9 @@
-package service
+package servicetest_test
 
 import (
 	"context"
+	"emojix/service"
+	"emojix/service/servicetest"
 	"testing"
 )
 
@@ -9,10 +11,10 @@ import (
 // caller) does not have its OnTurnEndHandler swallowed by the mock: the handler
 // passed to SetOnTurnEndHandler is retained and invocable via FireOnTurnEnd.
 func TestMockGameLoop_CapturesOnTurnEndHandler(t *testing.T) {
-	mock := &MockGameLoop{}
+	mock := &servicetest.MockGameLoop{}
 
 	done := make(chan string, 1)
-	handler := OnTurnEndHandler(func(_ context.Context, gameID string) {
+	handler := service.OnTurnEndHandler(func(_ context.Context, gameID string) {
 		done <- gameID
 	})
 
