@@ -17,11 +17,11 @@ UI redesign, and content stay out. Each task is detailed in its own `*.md` file 
 
 | ID  | Task file                         | Title                                                    | Depends on | Status |
 |-----|-----------------------------------|----------------------------------------------------------|------------|--------|
-| T01 | fix-gamenotifier-race.md          | Add mutex to GameNotifier (production data race)         | —          | `[ ]`  |
-| T02 | fix-test-races.md                 | Fix test-side data races (mock flags, call counters)     | T01        | `[ ]`  |
-| T03 | extend-game-repo-mock.md          | Extend MockGameRepository (SendMessage/AddTurn/…)       | —          | `[ ]`  |
-| T04 | extend-notifier-mock.md           | Add PubAllMock + concurrency safety to MockGameNotifier | T01        | `[ ]`  |
-| T05 | extend-gameloop-mock.md           | Capture OnTurnEndHandler in MockGameLoop (+ PubAll)      | —          | `[ ]`  |
+| T01 | fix-gamenotifier-race.md          | Add mutex to GameNotifier (production data race)         | —          | `[x]`  |
+| T02 | fix-test-races.md                 | Fix test-side data races (mock flags, call counters)     | T01        | `[x]`  |
+| T03 | extend-game-repo-mock.md          | Extend MockGameRepository (SendMessage/AddTurn/…)       | —          | `[x]`  |
+| T04 | extend-notifier-mock.md           | Add PubAllMock + concurrency safety to MockGameNotifier | T01        | `[x]`  |
+| T05 | extend-gameloop-mock.md           | Capture OnTurnEndHandler in MockGameLoop (+ PubAll)      | —          | `[x]`  |
 
 Phase 1 exit: `go test -race ./...` is green on existing tests and the usecase/repo/service
 mocks can stand in for the full interface set.
@@ -30,13 +30,13 @@ mocks can stand in for the full interface set.
 
 | ID  | Task file                         | Title                                                    | Depends on | Status |
 |-----|-----------------------------------|----------------------------------------------------------|------------|--------|
-| T06 | cleanup-gamestate-test-stubs.md   | Implement or delete empty `t.Run` stubs in TestGameState | T03        | `[ ]`  |
-| T07 | test-init-game-and-user.md        | TestInitGame + TestInitUser (nickname, UoW, loop start)  | T03, T05   | `[ ]`  |
-| T08 | test-guess.md                     | TestGuess + expose/fix duplicate-guess scoring bug       | T03, T04   | `[ ]`  |
-| T09 | test-message.md                   | TestMessage                                              | T03, T04   | `[ ]`  |
-| T10 | test-leaderboard-and-game-word.md  | TestLeaderboard + TestGameWord                           | T03        | `[ ]`  |
-| T11 | test-gameupdates-paths.md         | Cover msg/guessed/turnended/left GameUpdates paths       | T04        | `[ ]`  |
-| T12 | test-onturnend.md                 | TestOnTurnEnd retry path                                | T05, T04   | `[ ]`  |
+| T06 | cleanup-gamestate-test-stubs.md   | Implement or delete empty `t.Run` stubs in TestGameState | T03        | `[x]`  |
+| T07 | test-init-game-and-user.md        | TestInitGame + TestInitUser (nickname, UoW, loop start)  | T03, T05   | `[x]`  |
+| T08 | test-guess.md                     | TestGuess + expose/fix duplicate-guess scoring bug       | T03, T04   | `[x]`  |
+| T09 | test-message.md                   | TestMessage                                              | T03, T04   | `[x]`  |
+| T10 | test-leaderboard-and-game-word.md  | TestLeaderboard + TestGameWord                           | T03        | `[x]`  |
+| T11 | test-gameupdates-paths.md         | Cover msg/guessed/turnended/left GameUpdates paths       | T04        | `[x]`  |
+| T12 | test-onturnend.md                 | TestOnTurnEnd retry path                                | T05, T04   | `[x]`  |
 
 Phase 2 exit: every `EmojixUsecase` method has at least happy-path + one failure-path test.
 
@@ -44,7 +44,7 @@ Phase 2 exit: every `EmojixUsecase` method has at least happy-path + one failure
 
 | ID  | Task file                         | Title                                                    | Depends on | Status |
 |-----|-----------------------------------|----------------------------------------------------------|------------|--------|
-| T13 | inject-clock-into-usecase.md      | Inject Clock into usecase for deterministic TurnEnded    | —          | `[ ]`  |
+| T13 | inject-clock-into-usecase.md      | Inject Clock into usecase for deterministic TurnEnded    | —          | `[x]`  |
 
 Enables deterministic turn-timeout assertions for T06/T08.
 
@@ -52,21 +52,21 @@ Enables deterministic turn-timeout assertions for T06/T08.
 
 | ID  | Task file                         | Title                                                    | Depends on | Status |
 |-----|-----------------------------------|----------------------------------------------------------|------------|--------|
-| T14 | server-httptests.md               | httptest server tests with mock usecase + mock view      | —          | `[ ]`  |
-| T15 | template-smoke-tests.md           | Render every template with sample params (no typos)      | —          | `[ ]`  |
+| T14 | server-httptests.md               | httptest server tests with mock usecase + mock view      | —          | `[x]`  |
+| T15 | template-smoke-tests.md           | Render every template with sample params (no typos)      | —          | `[x]`  |
 
 ### Phase 5 — Infrastructure correctness
 
 | ID  | Task file                         | Title                                                    | Depends on | Status |
 |-----|-----------------------------------|----------------------------------------------------------|------------|--------|
-| T16 | enable-foreign-keys-and-tests.md  | Enable `PRAGMA foreign_keys = ON` + FK-constraint tests  | —          | `[ ]`  |
-| T17 | migrator-tests.md                 | Test Migrator (apply/Up/Reset/Seed) + fix SeedCmd path  | —          | `[ ]`  |
+| T16 | enable-foreign-keys-and-tests.md  | Enable `PRAGMA foreign_keys = ON` + FK-constraint tests  | —          | `[x]`  |
+| T17 | migrator-tests.md                 | Test Migrator (apply/Up/Reset/Seed) + fix SeedCmd path  | —          | `[x]`  |
 
 ### Phase 6 — Process / gate (last)
 
 | ID  | Task file                         | Title                                                    | Depends on  | Status |
 |-----|-----------------------------------|----------------------------------------------------------|-------------|--------|
-| T18 | add-race-and-cover-to-scripts.md  | Wire `go test -race -cover ./...` into a test script     | T01, T02    | `[ ]`  |
+| T18 | add-race-and-cover-to-scripts.md  | Wire `go test -race -cover ./...` into a test script     | T01, T02    | `[x]`  |
 
 ## Dependency graph (compact)
 
