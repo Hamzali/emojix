@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"slices"
 	"strings"
 	"testing"
 	"time"
@@ -399,7 +400,7 @@ func TestGame_RendersGamePageWithMaskedWord(t *testing.T) {
 	if got.GameID != "g1" {
 		t.Errorf("GameID = %q, want g1", got.GameID)
 	}
-	if want := strings.Split("apple", ""); !equalSlices(got.MaskedWord, want) {
+	if want := strings.Split("apple", ""); !slices.Equal(got.MaskedWord, want) {
 		t.Errorf("MaskedWord = %v, want %v", got.MaskedWord, want)
 	}
 	if got.EmojiHint != "fruit" {
@@ -689,7 +690,7 @@ func TestGameWord_RendersMasked(t *testing.T) {
 	if view.renderGameWordCalls != 1 {
 		t.Fatalf("renderGameWordCalls = %d, want 1", view.renderGameWordCalls)
 	}
-	if want := strings.Split("apple", ""); !equalSlices(view.renderGameWordLastParam.MaskedWord, want) {
+	if want := strings.Split("apple", ""); !slices.Equal(view.renderGameWordLastParam.MaskedWord, want) {
 		t.Errorf("MaskedWord = %v, want %v", view.renderGameWordLastParam.MaskedWord, want)
 	}
 }
@@ -872,18 +873,4 @@ func TestRouting_SmokeTest(t *testing.T) {
 	if resp2.StatusCode != http.StatusFound {
 		t.Errorf("GET /game/join status = %d, want 302", resp2.StatusCode)
 	}
-}
-
-// --- misc helpers ------------------------------------------------------
-
-func equalSlices(a, b []string) bool {
-	if len(a) != len(b) {
-		return false
-	}
-	for i := range a {
-		if a[i] != b[i] {
-			return false
-		}
-	}
-	return true
 }
