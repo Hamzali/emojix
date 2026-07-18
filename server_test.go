@@ -17,7 +17,7 @@ import (
 // --- test helpers -------------------------------------------------------
 
 func newServer(uc *MockEmojixUsecase, view *MockView) *webServer {
-	return &webServer{view: view, emojixUsecase: uc}
+	return &webServer{view: view, emojixUsecase: uc, kickDelay: 10 * time.Millisecond}
 }
 
 // withSession returns r with both session cookies set.
@@ -731,11 +731,6 @@ func TestSse_HeadersInitEventAndKickOnContextCancel(t *testing.T) {
 	}
 	view := &MockView{}
 	srv := newServer(uc, view)
-
-	// Inject a near-zero kick delay so the test does not wait 30s.
-	old := kickInactiveDelay
-	kickInactiveDelay = 10 * time.Millisecond
-	t.Cleanup(func() { kickInactiveDelay = old })
 
 	ctx, cancel := context.WithCancel(context.Background())
 	r := httptest.NewRequestWithContext(ctx, "GET", "/game/g1/sse", nil)

@@ -20,12 +20,17 @@ type EmojixServer interface {
 type webServer struct {
 	view          View
 	emojixUsecase usecase.EmojixUsecase
+	// kickDelay is how long the Sse handler waits before kicking an
+	// inactive user. It is a field (rather than a package var) so server
+	// tests can inject a near-zero duration without touching global state.
+	kickDelay time.Duration
 }
 
 func NewWebServer(emojixUsecase usecase.EmojixUsecase, view View) (EmojixServer, error) {
 	return &webServer{
-		view,
-		emojixUsecase,
+		view:          view,
+		emojixUsecase: emojixUsecase,
+		kickDelay:     defaultKickDelay,
 	}, nil
 }
 
@@ -63,10 +68,9 @@ const userIdCookieKey = "userid"
 
 const nicknameCookieKey = "nickname"
 
-// kickInactiveDelay is how long the Sse handler waits before kicking an
-// inactive user. It is a package var (rather than a hardcoded literal) so
-// server tests can inject a near-zero duration without racing the 30s wait.
-var kickInactiveDelay = time.Second * 30
+// defaultKickDelay is how long the Sse handler waits before kicking an
+// inactive user in production.
+const defaultKickDelay = time.Second * 30
 
 type Session struct {
 	UserID   string
@@ -422,7 +426,7 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		// TODO: experiment and find a better wait amount
 		// NOTE: should be higher than the turn start wait time
-		time.Sleep(kickInactiveDelay)
+		time.Sleep(e.kickDelay)
 
 		ctx := context.Background()
 		err := e.emojixUsecase.KickInactiveUser(ctx, gameID, userID)
