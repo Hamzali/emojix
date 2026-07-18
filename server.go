@@ -56,6 +56,11 @@ const userIdCookieKey = "userid"
 
 const nicknameCookieKey = "nickname"
 
+// kickInactiveDelay is how long the Sse handler waits before kicking an
+// inactive user. It is a package var (rather than a hardcoded literal) so
+// server tests can inject a near-zero duration without racing the 30s wait.
+var kickInactiveDelay = time.Second * 30
+
 type Session struct {
 	UserID   string
 	Nickname string
@@ -410,7 +415,7 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 	go func() {
 		// TODO: experiment and find a better wait amount
 		// NOTE: should be higher than the turn start wait time
-		time.Sleep(time.Second * 30)
+		time.Sleep(kickInactiveDelay)
 
 		ctx := context.Background()
 		err := e.emojixUsecase.KickInactiveUser(ctx, gameID, userID)
