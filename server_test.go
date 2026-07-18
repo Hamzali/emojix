@@ -811,10 +811,11 @@ func TestSse_MissingCookie_500(t *testing.T) {
 
 // --- mux smoke test ----------------------------------------------------
 
-// TestRouting_SmokeTest is a single smoke test that mounts the registered
-// default mux through httptest.NewServer to verify the pattern-based routes
-// wire up correctly (without coupling the per-handler behavior tests to the
-// mux). It only checks that a couple of routes resolve without panicking.
+// TestRouting_SmokeTest is a single smoke test that mounts the real route
+// table (webServer.mux) through httptest.NewServer to verify the
+// pattern-based routes wire up correctly (without coupling the per-handler
+// behavior tests to the mux). It only checks that a couple of routes resolve
+// without panicking.
 func TestRouting_SmokeTest(t *testing.T) {
 	uc := newMockUsecase()
 	uc.InitUserFn = func(ctx context.Context) (model.User, error) {
@@ -826,21 +827,7 @@ func TestRouting_SmokeTest(t *testing.T) {
 	view := &MockView{}
 	srv := newServer(uc, view)
 
-	mux := http.NewServeMux()
-	mux.HandleFunc("GET /", srv.Index)
-	mux.HandleFunc("GET /init", srv.InitSession)
-	mux.HandleFunc("POST /game/new", srv.NewGame)
-	mux.HandleFunc("GET /game/join", srv.JoinGame)
-	mux.HandleFunc("GET /game/{id}/join", srv.JoinGame)
-	mux.HandleFunc("GET /game/{id}/loading", srv.LoadingGame)
-	mux.HandleFunc("GET /game/{id}", srv.Game)
-	mux.HandleFunc("GET /game/{id}/leaderboard", srv.Leaderboard)
-	mux.HandleFunc("GET /game/{id}/word", srv.GameWord)
-	mux.HandleFunc("POST /game/{id}/message", srv.Message)
-	mux.HandleFunc("POST /game/{id}/guess", srv.Guess)
-	mux.HandleFunc("GET /game/{id}/sse", srv.Sse)
-
-	ts := httptest.NewServer(mux)
+	ts := httptest.NewServer(srv.mux())
 	defer ts.Close()
 
 	// Don't follow redirects: we only want to verify a route resolves and is

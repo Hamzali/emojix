@@ -29,21 +29,28 @@ func NewWebServer(emojixUsecase usecase.EmojixUsecase, view View) (EmojixServer,
 	}, nil
 }
 
+// mux returns the router with every route registered. It is shared by Start
+// and by routing tests so the test exercises the real route table.
+func (e *webServer) mux() *http.ServeMux {
+	mux := http.NewServeMux()
+	mux.Handle("GET /static/", http.FileServer(http.Dir("./")))
+	mux.HandleFunc("POST /game/new", e.NewGame)
+	mux.HandleFunc("GET /game/join", e.JoinGame)
+	mux.HandleFunc("GET /game/{id}/join", e.JoinGame)
+	mux.HandleFunc("GET /game/{id}/loading", e.LoadingGame)
+	mux.HandleFunc("GET /game/{id}", e.Game)
+	mux.HandleFunc("GET /game/{id}/leaderboard", e.Leaderboard)
+	mux.HandleFunc("GET /game/{id}/word", e.GameWord)
+	mux.HandleFunc("POST /game/{id}/message", e.Message)
+	mux.HandleFunc("POST /game/{id}/guess", e.Guess)
+	mux.HandleFunc("GET /game/{id}/sse", e.Sse)
+	mux.HandleFunc("GET /init", e.InitSession)
+	mux.HandleFunc("GET /", e.Index)
+	return mux
+}
+
 func (e *webServer) Start() {
-	http.Handle("GET /static/", http.FileServer(http.Dir("./")))
-	http.HandleFunc("POST /game/new", e.NewGame)
-	http.HandleFunc("GET /game/join", e.JoinGame)
-	http.HandleFunc("GET /game/{id}/join", e.JoinGame)
-	http.HandleFunc("GET /game/{id}/loading", e.LoadingGame)
-	http.HandleFunc("GET /game/{id}", e.Game)
-	http.HandleFunc("GET /game/{id}/leaderboard", e.Leaderboard)
-	http.HandleFunc("GET /game/{id}/word", e.GameWord)
-	http.HandleFunc("POST /game/{id}/message", e.Message)
-	http.HandleFunc("POST /game/{id}/guess", e.Guess)
-	http.HandleFunc("GET /game/{id}/sse", e.Sse)
-	http.HandleFunc("GET /init", e.InitSession)
-	http.HandleFunc("GET /", e.Index)
-	log.Fatal(http.ListenAndServe("0.0.0.0:9000", nil))
+	log.Fatal(http.ListenAndServe("0.0.0.0:9000", e.mux()))
 }
 
 func (e *webServer) handleError(w http.ResponseWriter, err error, msg string) {
