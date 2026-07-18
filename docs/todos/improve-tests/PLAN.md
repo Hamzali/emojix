@@ -111,3 +111,4 @@ Documented in `BACKLOG.md`:
 - All `template/*.gohtml` render smoke-tested.
 - `PRAGMA foreign_keys = ON` is enabled and FK integrity is asserted.
 - Coverage baseline is recorded (the number goes into PLAN.md once T18 lands).
+  - **Recorded baseline:** `74.2%` (`go tool cover -func=coverage.out | tail -1`) via `script/test.sh`.

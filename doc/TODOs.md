@@ -47,7 +47,6 @@ techdebt
 - [] cleanup anon users in the database? Search how people do it and implement a pragmatic simple solution
 - [] fetch all game data with one sql query in one go (get game data/state)
 - [] cleanup/close realtime channels for users properly or atleast figure out if they are cleaned up by go runtime
-- [] add e2e tests (when you nail down the initial version)
 
 ## Wed Jan  7 12:47:13 AM +03 2026
 
