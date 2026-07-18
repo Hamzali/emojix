@@ -121,6 +121,10 @@ func maskContent(content string, word string, guessedWord bool) string {
 
 const turnDuration = time.Second * 60
 
+// ErrNoWords is returned when a new turn cannot be created because the word
+// repository has no words to pick from.
+var ErrNoWords = errors.New("no words available to pick for a new turn")
+
 func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUserID string) (model.GameState, error) {
 	gameState := model.GameState{}
 	players, err := e.gameRepo.GetPlayers(ctx, gameID)
@@ -483,6 +487,9 @@ func (e *emojixUsecase) newGameTurn(ctx context.Context, gr repository.GameRepos
 	allWords, err := e.wordRepo.GetAll(ctx)
 	if err != nil {
 		return err
+	}
+	if len(allWords) == 0 {
+		return ErrNoWords
 	}
 
 	pickedWord := pickGameWord(allWords)

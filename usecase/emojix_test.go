@@ -550,3 +550,294 @@ func TestGameState_TurnTimedOut(t *testing.T) {
 		t.Errorf("expected TurnEnded to be true after the clock advanced past turnDuration, but got false")
 	}
 }
+
+func newInitGameUsecase(t *testing.T, mur repository.UserRepository, mgr *repository.MockGameRepository, mwr *repository.MockWordRepository, gl *service.MockGameLoop, commitErr error, newErr error) (usecase.EmojixUsecase, *repository.MockUnitOfWork) {
+	t.Helper()
+	uow := &repository.MockUnitOfWork{
+		GameRepositoryMock: mgr,
+		CommitMock:          func() error { return commitErr },
+		RollbackMock:        func() error { return nil },
+	}
+	factory := &repository.MockUnitOfWorkFactory{
+		NewMock: func(ctx context.Context) (repository.UnitOfWork, error) {
+			if newErr != nil {
+				return nil, newErr
+			}
+			return uow, newErr
+		},
+	}
+	uc := usecase.NewEmojixUsecase(mur, mgr, mwr, factory, nil, gl, service.NewRealClock())
+	return uc, uow
+}
+
+func TestInitGame(t *testing.T) {
+	const userID = "init-user-id"
+
+	t.Run("happy path starts loop after commit", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			CreateMock: func(ctx context.Context) (model.Game, error) {
+				return model.Game{ID: "game-1"}, nil
+			},
+			AddPlayerMock: func(ctx context.Context, gameID, playerID string) error {
+				if err := assertCalledWithError("GameID", "game-1", gameID); err != nil {
+					t.Error(err)
+				}
+				if err := assertCalledWithError("PlayerID", userID, playerID); err != nil {
+					t.Error(err)
+				}
+				return nil
+			},
+			AddTurnMock: func(ctx context.Context, gameID, wordID string) (model.GameTurn, error) {
+				if err := assertCalledWithError("GameID", "game-1", gameID); err != nil {
+					t.Error(err)
+				}
+				if wordID != "w1" && wordID != "w2" {
+					t.Errorf("AddTurn wordID %q not from GetAll list", wordID)
+				}
+				return model.GameTurn{ID: "turn-1"}, nil
+			},
+		}
+		mwr := &repository.MockWordRepository{
+			GetAllMock: func(ctx context.Context) ([]model.Word, error) {
+				return []model.Word{{ID: "w1", Word: "Alpha"}, {ID: "w2", Word: "Beta"}}, nil
+			},
+		}
+
+		committed := false
+		var startGameID string
+		var startDur time.Duration
+		startCalled := make(chan struct{}, 1)
+		gl := &service.MockGameLoop{
+			StartMock: func(ctx context.Context, gameID string, duration time.Duration) {
+				if !committed {
+					t.Error("gameLoop.Start called before uow.Commit")
+				}
+				startGameID = gameID
+				startDur = duration
+				startCalled <- struct{}{}
+			},
+		}
+		uc, uow := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, nil)
+		// Wrap Commit so we can observe ordering relative to Start.
+		uow.CommitMock = func() error {
+			committed = true
+			return nil
+		}
+
+		game, err := uc.InitGame(context.Background(), userID)
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if game.ID != "game-1" {
+			t.Errorf("game ID: got %q, want game-1", game.ID)
+		}
+		if !mgr.CreateCalled || !mgr.AddPlayerCalled || !mgr.AddTurnCalled {
+			t.Error("expected Create/AddPlayer/AddTurn to be called")
+		}
+		if !uow.CommitCalled {
+			t.Error("expected Commit to be called")
+		}
+		if !gl.StartCalled {
+			t.Error("expected gameLoop.Start to be called")
+		}
+		select {
+		case <-startCalled:
+		case <-time.After(time.Second):
+			t.Fatal("StartMock was not invoked")
+		}
+		if startGameID != "game-1" {
+			t.Errorf("Start gameID: got %q, want game-1", startGameID)
+		}
+		if startDur != time.Minute {
+			t.Errorf("Start duration: got %v, want %v", startDur, time.Minute)
+		}
+	})
+
+	t.Run("uow.New fails", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{}
+		mwr := &repository.MockWordRepository{}
+		gl := &service.MockGameLoop{}
+		newErr := errors.New("uow new failed")
+		uc, _ := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, newErr)
+
+		_, err := uc.InitGame(context.Background(), userID)
+		if !errors.Is(err, newErr) {
+			t.Fatalf("expected newErr, got %v", err)
+		}
+		if mgr.CreateCalled || mgr.AddPlayerCalled || mgr.AddTurnCalled {
+			t.Error("no repo calls expected on uow.New failure")
+		}
+		if gl.StartCalled {
+			t.Error("Start must not be called on uow.New failure")
+		}
+	})
+
+	t.Run("gameRepo.Create fails rolls back and does not start", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			CreateMock: func(ctx context.Context) (model.Game, error) {
+				return model.Game{}, errors.New("create failed")
+			},
+		}
+		mwr := &repository.MockWordRepository{}
+		gl := &service.MockGameLoop{}
+		uc, uow := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, nil)
+
+		_, err := uc.InitGame(context.Background(), userID)
+		if err == nil {
+			t.Fatal("expected error from Create")
+		}
+		if mgr.AddPlayerCalled || mgr.AddTurnCalled {
+			t.Error("AddPlayer/AddTurn must not be called on Create failure")
+		}
+		if uow.CommitCalled {
+			t.Error("Commit must not be called on Create failure")
+		}
+		if !uow.RollbackCalled {
+			t.Error("Rollback (deferred) must be called on Create failure")
+		}
+		if gl.StartCalled {
+			t.Error("Start must not be called on Create failure")
+		}
+	})
+
+	t.Run("AddTurn fails rolls back and does not start", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			CreateMock: func(ctx context.Context) (model.Game, error) {
+				return model.Game{ID: "game-2"}, nil
+			},
+			AddPlayerMock: func(ctx context.Context, gameID, playerID string) error { return nil },
+			AddTurnMock: func(ctx context.Context, gameID, wordID string) (model.GameTurn, error) {
+				return model.GameTurn{}, errors.New("addturn failed")
+			},
+		}
+		mwr := &repository.MockWordRepository{
+			GetAllMock: func(ctx context.Context) ([]model.Word, error) {
+				return []model.Word{{ID: "w1", Word: "Alpha"}}, nil
+			},
+		}
+		gl := &service.MockGameLoop{}
+		uc, uow := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, nil)
+
+		_, err := uc.InitGame(context.Background(), userID)
+		if err == nil {
+			t.Fatal("expected error from AddTurn")
+		}
+		if uow.CommitCalled {
+			t.Error("Commit must not be called on AddTurn failure")
+		}
+		if !uow.RollbackCalled {
+			t.Error("Rollback (deferred) must be called on AddTurn failure")
+		}
+		if gl.StartCalled {
+			t.Error("Start must not be called on AddTurn failure")
+		}
+	})
+
+	t.Run("empty word list returns ErrNoWords", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			CreateMock: func(ctx context.Context) (model.Game, error) {
+				return model.Game{ID: "game-3"}, nil
+			},
+			AddPlayerMock: func(ctx context.Context, gameID, playerID string) error { return nil },
+			AddTurnMock: func(ctx context.Context, gameID, wordID string) (model.GameTurn, error) {
+				t.Error("AddTurn must not be called when there are no words")
+				return model.GameTurn{}, nil
+			},
+		}
+		mwr := &repository.MockWordRepository{
+			GetAllMock: func(ctx context.Context) ([]model.Word, error) {
+				return []model.Word{}, nil
+			},
+		}
+		gl := &service.MockGameLoop{}
+		uc, uow := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, nil)
+
+		_, err := uc.InitGame(context.Background(), userID)
+		if !errors.Is(err, usecase.ErrNoWords) {
+			t.Fatalf("expected ErrNoWords, got %v", err)
+		}
+		if uow.CommitCalled {
+			t.Error("Commit must not be called on empty word list")
+		}
+		if !uow.RollbackCalled {
+			t.Error("Rollback (deferred) must be called on empty word list")
+		}
+		if gl.StartCalled {
+			t.Error("Start must not be called on empty word list")
+		}
+	})
+}
+
+func TestInitUser(t *testing.T) {
+	t.Run("happy path generates id shape and nickname and persists", func(t *testing.T) {
+		createCalled := make(chan struct{}, 1)
+		var gotID string
+		var gotNick string
+		mur := &repository.MockUserRepository{
+			CreateOrUpdateMock: func(ctx context.Context, id string, params repository.UserCreateOrUpdateParams) error {
+				gotID = id
+				gotNick = params.Nickname
+				createCalled <- struct{}{}
+				return nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(mur, nil, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+
+		user, err := uc.InitUser(context.Background())
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if len(user.ID) != 32 {
+			t.Errorf("user ID length: got %d, want 32 (16 hex-encoded bytes)", len(user.ID))
+		}
+		for _, c := range user.ID {
+			if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
+				t.Errorf("user ID %q is not lowercase hex", user.ID)
+				break
+			}
+		}
+		// Nickname shape: capitalize(adjective) + capitalize(animal), e.g. "SillyCat".
+		if len(user.Nickname) < 2 || len(user.Nickname) < 4 {
+			t.Errorf("nickname too short: %q", user.Nickname)
+		}
+		if user.Nickname[0] < 'A' || user.Nickname[0] > 'Z' {
+			t.Errorf("nickname %q must start with an uppercase letter", user.Nickname)
+		}
+		hasLower := false
+		for _, c := range user.Nickname[1:] {
+			if c >= 'a' && c <= 'z' {
+				hasLower = true
+				break
+			}
+		}
+		if !hasLower {
+			t.Errorf("nickname %q must contain lowercase letters", user.Nickname)
+		}
+
+		select {
+		case <-createCalled:
+		case <-time.After(time.Second):
+			t.Fatal("CreateOrUpdate not called")
+		}
+		if gotID != user.ID {
+			t.Errorf("CreateOrUpdate ID: got %q, want %q", gotID, user.ID)
+		}
+		if gotNick != user.Nickname {
+			t.Errorf("CreateOrUpdate Nickname: got %q, want %q", gotNick, user.Nickname)
+		}
+	})
+
+	t.Run("CreateOrUpdate fails propagates", func(t *testing.T) {
+		mur := &repository.MockUserRepository{
+			CreateOrUpdateMock: func(ctx context.Context, id string, params repository.UserCreateOrUpdateParams) error {
+				return errors.New("persist failed")
+			},
+		}
+		uc := usecase.NewEmojixUsecase(mur, nil, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+
+		_, err := uc.InitUser(context.Background())
+		if err == nil {
+			t.Fatal("expected error from CreateOrUpdate")
+		}
+	})
+}
