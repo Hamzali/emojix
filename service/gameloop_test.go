@@ -85,22 +85,28 @@ func TestGameLoop_TimeoutBeforeAllGuessed(t *testing.T) {
 
 func TestGameLoop_DoubleEndGameTurn(t *testing.T) {
 	fc := service.NewFakeClock()
-	callCount := 0
+	calls := make(chan struct{}, 4)
 
 	gl := service.NewGameLoop(fc)
 	gl.SetOnTurnEndHandler(func(ctx context.Context, gameID string) {
-		callCount++
+		calls <- struct{}{}
 	})
 
 	gl.Start(context.Background(), "g1", 60*time.Second)
 	gl.EndGameTurn("g1")
 	gl.EndGameTurn("g1") // second send should be dropped (buffered ch + default)
 
-	// Wait for goroutine to process
-	time.Sleep(10 * time.Millisecond)
+	// Expect exactly one call: wait for it, then ensure no second call arrives.
+	select {
+	case <-calls:
+	case <-time.After(time.Second):
+		t.Fatal("OnTurnEnd not called")
+	}
 
-	if callCount != 1 {
-		t.Fatalf("expected 1 call, got %d", callCount)
+	select {
+	case <-calls:
+		t.Fatal("OnTurnEnd called twice")
+	default:
 	}
 }
 

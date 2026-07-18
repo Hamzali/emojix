@@ -97,9 +97,11 @@ func TestKickInactiveUser(t *testing.T) {
 	})
 
 	t.Run("keeps user if its active", func(t *testing.T) {
+		pubCh := make(chan struct{}, 1)
 		mgn := &service.MockGameNotifier{
 			SubsMock: subsMock,
 			PubMock: func(gameID, userID string, notif service.GameNotification) {
+				pubCh <- struct{}{}
 			},
 		}
 
@@ -128,9 +130,7 @@ func TestKickInactiveUser(t *testing.T) {
 			t.Error("expected GameRepository.SetPlayerState not to be called")
 		}
 
-		if mgn.PubCalled != false {
-			t.Error("expected NotifierService.Pub not to be called")
-		}
+		assertPubNotCalled(t, pubCh)
 	})
 
 }
