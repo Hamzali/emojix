@@ -17,8 +17,6 @@ type Clock interface {
 	Now() time.Time
 }
 
-
-
 // RealClock is the default clock implementation using real time.
 type RealClock struct{}
 
@@ -52,8 +50,8 @@ type GameLoop interface {
 
 type gameLoop struct {
 	mu        sync.Mutex
-	chs       map[string]chan struct{}       // gameID -> signal channel
-	cancels   map[string]context.CancelFunc  // gameID -> cancel func
+	chs       map[string]chan struct{}      // gameID -> signal channel
+	cancels   map[string]context.CancelFunc // gameID -> cancel func
 	clock     Clock
 	onTurnEnd OnTurnEndHandler
 }

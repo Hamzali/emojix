@@ -437,13 +437,13 @@ func TestGameState(t *testing.T) {
 
 func TestGameUpdates(t *testing.T) {
 	cases := []struct {
-		name      string
-		notif     service.GameNotification
-		preCancel bool // cancel ctx before calling GameUpdates (cancellation case)
+		name       string
+		notif      service.GameNotification
+		preCancel  bool // cancel ctx before calling GameUpdates (cancellation case)
 		handlerErr error
-		wantType  string
-		wantData  string
-		wantErr   error
+		wantType   string
+		wantData   string
+		wantErr    error
 	}{
 		{
 			name:     "join",
@@ -609,8 +609,8 @@ func newInitGameUsecase(t *testing.T, mur repository.UserRepository, mgr *reposi
 	t.Helper()
 	uow := &repository.MockUnitOfWork{
 		GameRepositoryMock: mgr,
-		CommitMock:          func() error { return commitErr },
-		RollbackMock:        func() error { return nil },
+		CommitMock:         func() error { return commitErr },
+		RollbackMock:       func() error { return nil },
 	}
 	factory := &repository.MockUnitOfWorkFactory{
 		NewMock: func(ctx context.Context) (repository.UnitOfWork, error) {
@@ -901,8 +901,8 @@ func TestInitUser(t *testing.T) {
 func newGuessUsecase(mur repository.UserRepository, mgr *repository.MockGameRepository, mwr *repository.MockWordRepository, mgn *service.MockGameNotifier, gl *service.MockGameLoop, commitErr error) (usecase.EmojixUsecase, *repository.MockUnitOfWork) {
 	uow := &repository.MockUnitOfWork{
 		GameRepositoryMock: mgr,
-		CommitMock:          func() error { return commitErr },
-		RollbackMock:        func() error { return nil },
+		CommitMock:         func() error { return commitErr },
+		RollbackMock:       func() error { return nil },
 	}
 	factory := &repository.MockUnitOfWorkFactory{
 		NewMock: func(ctx context.Context) (repository.UnitOfWork, error) {
@@ -1515,7 +1515,7 @@ func TestLeaderboard(t *testing.T) {
 					{ID: "p-2", Nickname: "Nick2", State: model.ActivePlayerState},
 				}, nil
 			},
-			GetScoresMock:    func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil },
+			GetScoresMock:     func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil },
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) { return model.GameTurn{ID: "latest"}, nil },
 		}
 		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
@@ -1537,7 +1537,7 @@ func TestLeaderboard(t *testing.T) {
 					{ID: "p-2", Nickname: "Nick2", State: model.InactivePlayerState},
 				}, nil
 			},
-			GetScoresMock:    func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil },
+			GetScoresMock:     func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil },
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) { return model.GameTurn{ID: "latest"}, nil },
 		}
 		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
@@ -1766,13 +1766,13 @@ func TestOnTurnEnd(t *testing.T) {
 	// buildOnTurnEndUsecase wires the common mocks for onTurnEnd tests. The
 	// pubAll/stop signals and counters are returned for assertions.
 	type onTurnEndMocks struct {
-		pubAllCount int
-		getAllCount int
+		pubAllCount  int
+		getAllCount  int
 		addTurnCount int
-		stopCount   int
-		stopGameIDs []string
-		pubAllCh    chan struct{}
-		stopCh      chan string
+		stopCount    int
+		stopGameIDs  []string
+		pubAllCh     chan struct{}
+		stopCh       chan string
 	}
 
 	newUsecase := func(t *testing.T, addTurnFn func(call int) (model.GameTurn, error), getAllFn func(call int) ([]model.Word, error), stopAtAll bool) (*service.MockGameLoop, *service.FakeClock, *onTurnEndMocks) {
