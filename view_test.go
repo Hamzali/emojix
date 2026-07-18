@@ -3,28 +3,15 @@ package emojix
 import (
 	"bytes"
 	"emojix/model"
-	"os"
 	"strings"
 	"testing"
 	"time"
 )
 
-// Templates are parsed from relative paths like "template/index.gohtml", so
-// these tests must run from the repo root. Fail fast with a clear message if a
-// contributor runs them from the wrong directory instead of getting a cryptic
-// template.ParseFiles error deep in NewHTMLView.
-func requireTemplateDir(t *testing.T) {
-	t.Helper()
-	if _, err := os.Stat("template/index.gohtml"); err != nil {
-		t.Fatalf("template/index.gohtml not found — run tests from the repo root: %v", err)
-	}
-}
-
 // TestNewHTMLViewParsesAllTemplates asserts that NewHTMLView parses every
-// template/*.gohtml without panicking. A panic (from template.Must on a
+// embedded template without panicking. A panic (from template.Must on a
 // malformed or missing file) surfaces as a test failure here.
 func TestNewHTMLViewParsesAllTemplates(t *testing.T) {
-	requireTemplateDir(t)
 	_ = NewHTMLView()
 }
 
@@ -34,7 +21,6 @@ func TestNewHTMLViewParsesAllTemplates(t *testing.T) {
 // catch template shape/typo regressions in a single test, not to lock in
 // exact HTML (which would couple the test to design changes).
 func TestRenderEveryTemplate(t *testing.T) {
-	requireTemplateDir(t)
 	view := NewHTMLView()
 
 	type tc struct {

@@ -1,11 +1,18 @@
 package emojix
 
 import (
+	"embed"
 	"emojix/model"
 	"html/template"
 	"io"
 	"time"
 )
+
+// templateFS embeds the templates into the binary so rendering (and its
+// tests) works regardless of the process working directory.
+//
+//go:embed template/*.gohtml
+var templateFS embed.FS
 
 type IndexPageViewParam struct {
 	Title    string
@@ -59,37 +66,37 @@ type htmlView struct {
 }
 
 func NewHTMLView() View {
-	indexPageTemplate := *template.Must(template.ParseFiles(
+	indexPageTemplate := *template.Must(template.ParseFS(templateFS,
 		"template/base.gohtml",
 		"template/index.gohtml",
 	))
 
-	gamePageTemplate := *template.Must(template.ParseFiles(
+	gamePageTemplate := *template.Must(template.ParseFS(templateFS,
 		"template/base.gohtml",
 		"template/game.gohtml",
 		"template/game-msg-def.gohtml",
 		"template/game-leaderboard-def.gohtml",
 		"template/game-word-def.gohtml",
 	))
-	gameWordTemplate := *template.Must(template.ParseFiles(
+	gameWordTemplate := *template.Must(template.ParseFS(templateFS,
 		"template/game-word.gohtml",
 		"template/game-word-def.gohtml",
 	))
-	gameMsgTemplate := *template.Must(template.ParseFiles(
+	gameMsgTemplate := *template.Must(template.ParseFS(templateFS,
 		"template/game-msg.gohtml",
 		"template/game-msg-def.gohtml",
 	))
-	gameLeaderboardTemplate := *template.Must(template.ParseFiles(
+	gameLeaderboardTemplate := *template.Must(template.ParseFS(templateFS,
 		"template/game-leaderboard.gohtml",
 		"template/game-leaderboard-def.gohtml",
 	))
 
-	gameLoadingPageTemplate := *template.Must(template.ParseFiles(
+	gameLoadingPageTemplate := *template.Must(template.ParseFS(templateFS,
 		"template/base.gohtml",
 		"template/game-loading.gohtml",
 	))
 
-	errorPageTemplate := *template.Must(template.ParseFiles(
+	errorPageTemplate := *template.Must(template.ParseFS(templateFS,
 		"template/base.gohtml",
 		"template/error.gohtml",
 	))
