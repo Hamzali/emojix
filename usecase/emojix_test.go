@@ -1225,3 +1225,184 @@ func TestGuess(t *testing.T) {
 		drainPub(t, pubCh, 2)
 	})
 }
+
+// --- T09: TestMessage ---
+
+func TestMessage(t *testing.T) {
+	const (
+		gameID = "game-1"
+		userID = "p-1"
+		turnID = "turn-1"
+	)
+	murFor := func(nick string, err error) *repository.MockUserRepository {
+		return &repository.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				if err := assertCalledWithError("UserID", userID, id); err != nil {
+					t.Error(err)
+				}
+				return model.User{ID: userID, Nickname: nick}, err
+			},
+		}
+	}
+
+	t.Run("happy path persists and pubs raw content; ParseData round-trips", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				if err := assertCalledWithError("GameID", gameID, id); err != nil {
+					t.Error(err)
+				}
+				return model.GameTurn{ID: turnID}, nil
+			},
+			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
+				if err := assertCalledWithError("GameID", gameID, g); err != nil {
+					t.Error(err)
+				}
+				if err := assertCalledWithError("TurnID", turnID, turn); err != nil {
+					t.Error(err)
+				}
+				if err := assertCalledWithError("UserID", userID, u); err != nil {
+					t.Error(err)
+				}
+				if err := assertCalledWithError("Content", "hello", content); err != nil {
+					t.Error(err)
+				}
+				return model.Message{ID: "m-1"}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) {
+			if err := assertCalledWithError("GameID", gameID, g); err != nil {
+				t.Error(err)
+			}
+			if err := assertCalledWithError("UserID", userID, u); err != nil {
+				t.Error(err)
+			}
+			pubCh <- n
+		}}
+		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
+
+		if err := uc.Message(context.Background(), gameID, userID, "hello"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !mgr.SendMessageCalled {
+			t.Error("expected SendMessage to be called")
+		}
+		n := drainPub(t, pubCh, 1)[0]
+		if n.GetType() != "msg" {
+			t.Errorf("pub type: got %q, want msg", n.GetType())
+		}
+		wantData := userID + ",Nick1,hello"
+		if got := n.GetData(); got != wantData {
+			t.Errorf("pub data: got %q, want %q", got, wantData)
+		}
+		// ParseData round-trip.
+		parsed := &usecase.GameMsgNotification{}
+		if err := parsed.ParseData(n.GetData()); err != nil {
+			t.Fatalf("ParseData: %v", err)
+		}
+		if parsed.UserID != userID || parsed.Nickname != "Nick1" || parsed.Content != "hello" {
+			t.Errorf("ParseData round-trip mismatch: %+v", parsed)
+		}
+	})
+
+	t.Run("content equal to the secret word is published unmasked", func(t *testing.T) {
+		// NOTE: Message deliberately does NOT mask chat content, even when it
+		// equals the secret word. This is a game-integrity gap (a user can
+		// type the literal word and it is broadcast unmasked). Pinning current
+		// behavior here; masking is a behavior decision tracked as backlog.
+		// TODO(backlog): mask chat content matching the secret word in Message.
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: turnID, WordID: "w-1"}, nil
+			},
+			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
+				return model.Message{ID: "m-1"}, nil
+			},
+		}
+		// Provided for documentation; Message does not consult the word repo.
+		mwr := &repository.MockWordRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+				return model.Word{ID: "w-1", Word: "Secret"}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, mwr, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
+
+		if err := uc.Message(context.Background(), gameID, userID, "Secret"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		n := drainPub(t, pubCh, 1)[0]
+		if got := n.GetData(); got != userID+",Nick1,Secret" {
+			t.Errorf("expected unmasked secret word in pub data, got %q", got)
+		}
+	})
+
+	t.Run("GetLatestTurn fails propagates without SendMessage or pub", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{}, errors.New("turn failed")
+			},
+			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
+				t.Error("SendMessage must not be called on GetLatestTurn failure")
+				return model.Message{}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
+
+		err := uc.Message(context.Background(), gameID, userID, "hello")
+		if err == nil {
+			t.Fatal("expected error from GetLatestTurn")
+		}
+		if mgr.SendMessageCalled {
+			t.Error("SendMessage must not be called")
+		}
+		assertNoPub(t, pubCh)
+	})
+
+	t.Run("userRepo.FindByID fails propagates without SendMessage or pub", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: turnID}, nil
+			},
+			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
+				t.Error("SendMessage must not be called on FindByID failure")
+				return model.Message{}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc := usecase.NewEmojixUsecase(murFor("", errors.New("user not found")), mgr, nil, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
+
+		err := uc.Message(context.Background(), gameID, userID, "hello")
+		if err == nil {
+			t.Fatal("expected error from FindByID")
+		}
+		if mgr.SendMessageCalled {
+			t.Error("SendMessage must not be called")
+		}
+		assertNoPub(t, pubCh)
+	})
+
+	t.Run("SendMessage fails propagates without pub", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: turnID}, nil
+			},
+			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
+				return model.Message{}, errors.New("send failed")
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
+
+		err := uc.Message(context.Background(), gameID, userID, "hello")
+		if err == nil {
+			t.Fatal("expected error from SendMessage")
+		}
+		assertNoPub(t, pubCh)
+	})
+}
