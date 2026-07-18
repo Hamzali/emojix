@@ -841,3 +841,387 @@ func TestInitUser(t *testing.T) {
 		}
 	})
 }
+
+// --- T08: TestGuess helpers ---
+
+func newGuessUsecase(mur repository.UserRepository, mgr *repository.MockGameRepository, mwr *repository.MockWordRepository, mgn *service.MockGameNotifier, gl *service.MockGameLoop, commitErr error) (usecase.EmojixUsecase, *repository.MockUnitOfWork) {
+	uow := &repository.MockUnitOfWork{
+		GameRepositoryMock: mgr,
+		CommitMock:          func() error { return commitErr },
+		RollbackMock:        func() error { return nil },
+	}
+	factory := &repository.MockUnitOfWorkFactory{
+		NewMock: func(ctx context.Context) (repository.UnitOfWork, error) {
+			return uow, nil
+		},
+	}
+	uc := usecase.NewEmojixUsecase(mur, mgr, mwr, factory, mgn, gl, service.NewRealClock())
+	return uc, uow
+}
+
+func drainPub(t *testing.T, ch <-chan service.GameNotification, want int) []service.GameNotification {
+	t.Helper()
+	got := make([]service.GameNotification, 0, want)
+	for i := 0; i < want; i++ {
+		select {
+		case n := <-ch:
+			got = append(got, n)
+		case <-time.After(time.Second):
+			t.Fatalf("expected %d pub(s), got %d: %+v", want, len(got), got)
+		}
+	}
+	return got
+}
+
+func assertNoPub(t *testing.T, ch <-chan service.GameNotification) {
+	t.Helper()
+	select {
+	case n := <-ch:
+		t.Fatalf("expected no pub, got type=%s data=%q", n.GetType(), n.GetData())
+	case <-time.After(50 * time.Millisecond):
+	}
+}
+
+func notifByType(ns []service.GameNotification, typ string) service.GameNotification {
+	for _, n := range ns {
+		if n.GetType() == typ {
+			return n
+		}
+	}
+	return nil
+}
+
+func TestGuess(t *testing.T) {
+	const (
+		gameID  = "game-1"
+		userID  = "p-1"
+		turnID  = "turn-1"
+		wordID  = "w-1"
+		theWord = "Secret"
+	)
+
+	// baseWordRepo returns a fixed word for the latest turn.
+	baseWordRepo := func() *repository.MockWordRepository {
+		return &repository.MockWordRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+				return model.Word{ID: wordID, Word: theWord, Hint: "h"}, nil
+			},
+		}
+	}
+	// baseGameRepo wires the latest turn + a SendMessage that returns a message.
+	baseGameRepo := func() *repository.MockGameRepository {
+		return &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				if err := assertCalledWithError("GameID", gameID, id); err != nil {
+					t.Error(err)
+				}
+				return model.GameTurn{ID: turnID, WordID: wordID}, nil
+			},
+			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
+				return model.Message{ID: "msg-1", PlayerID: u, Content: content, TurnID: turn}, nil
+			},
+		}
+	}
+
+	t.Run("wrong guess publishes raw content after commit and scores nothing", func(t *testing.T) {
+		mgr := baseGameRepo()
+		mgr.GetPlayersMock = func(ctx context.Context, id string) ([]model.Player, error) { return nil, nil }
+		mgr.GetScoresMock = func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil }
+		mur := &repository.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{ID: userID, Nickname: "Nick1"}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 2)
+		mgn := &service.MockGameNotifier{
+			PubMock: func(g, u string, n service.GameNotification) { pubCh <- n },
+		}
+		gl := &service.MockGameLoop{}
+		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
+
+		if err := uc.Guess(context.Background(), gameID, userID, "nope"); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !uow.CommitCalled {
+			t.Error("expected Commit to be called once on wrong guess")
+		}
+		if mgr.AddScoreCalled {
+			t.Error("AddScore must not be called on a wrong guess")
+		}
+		if gl.EndGameTurnCalled {
+			t.Error("EndGameTurn must not be called on a wrong guess")
+		}
+		pub := drainPub(t, pubCh, 1)[0]
+		if pub.GetType() != "msg" {
+			t.Errorf("pub type: got %q, want msg", pub.GetType())
+		}
+		if got := pub.GetData(); got != userID+",Nick1,nope" {
+			t.Errorf("pub data: got %q, want %q", got, userID+",Nick1,nope")
+		}
+	})
+
+	t.Run("correct first guess scores points and pubs guessed but does not end turn", func(t *testing.T) {
+		mgr := baseGameRepo()
+		mgr.GetPlayersMock = func(ctx context.Context, id string) ([]model.Player, error) {
+			return []model.Player{
+				{ID: userID, Nickname: "Nick1", State: model.ActivePlayerState},
+				{ID: "p-2", Nickname: "Nick2", State: model.ActivePlayerState},
+				{ID: "p-3", Nickname: "Nick3", State: model.ActivePlayerState},
+			}, nil
+		}
+		mgr.GetScoresMock = func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil }
+		var scoredPoint int
+		mgr.AddScoreMock = func(ctx context.Context, g, u, msg, turn string, point int) error {
+			scoredPoint = point
+			return nil
+		}
+		mur := &repository.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{ID: userID, Nickname: "Nick1"}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 2)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		gl := &service.MockGameLoop{}
+		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
+
+		if err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		// 3 active players, no prior guesses → totalGuessers=1, coeff=3/1=3, point=10*3=30.
+		// NOTE: formula kept as-is per backlog (README drift). See TODO in emojix.go.
+		if scoredPoint != 30 {
+			t.Errorf("AddScore point: got %d, want 30", scoredPoint)
+		}
+		if gl.EndGameTurnCalled {
+			t.Error("EndGameTurn must not be called when not everyone has guessed")
+		}
+		pub := drainPub(t, pubCh, 2)
+		if notifByType(pub, "msg") == nil {
+			t.Error("expected a msg pub (masked ***)")
+		}
+		if notifByType(pub, "guessed") == nil {
+			t.Error("expected a guessed pub")
+		}
+		if m := notifByType(pub, "msg"); m != nil && m.GetData() != userID+",Nick1,***" {
+			t.Errorf("masked msg data: got %q, want %q", m.GetData(), userID+",Nick1,***")
+		}
+	})
+
+	t.Run("last correct guess ends turn", func(t *testing.T) {
+		mgr := baseGameRepo()
+		mgr.GetPlayersMock = func(ctx context.Context, id string) ([]model.Player, error) {
+			return []model.Player{
+				{ID: userID, Nickname: "Nick1", State: model.ActivePlayerState},
+				{ID: "p-2", Nickname: "Nick2", State: model.ActivePlayerState},
+				{ID: "p-3", Nickname: "Nick3", State: model.ActivePlayerState},
+			}, nil
+		}
+		mgr.GetScoresMock = func(ctx context.Context, id string) ([]model.Score, error) {
+			return []model.Score{
+				{PlayerID: "p-2", TurnID: turnID},
+				{PlayerID: "p-3", TurnID: turnID},
+			}, nil
+		}
+		endGameTurnCalled := make(chan struct{}, 1)
+		mgr.AddScoreMock = func(ctx context.Context, g, u, msg, turn string, point int) error { return nil }
+		mur := &repository.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{ID: userID, Nickname: "Nick1"}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 2)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		gl := &service.MockGameLoop{
+			EndGameTurnMock: func(g string) {
+				if err := assertCalledWithError("GameID", gameID, g); err != nil {
+					t.Error(err)
+				}
+				endGameTurnCalled <- struct{}{}
+			},
+		}
+		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
+
+		if err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		select {
+		case <-endGameTurnCalled:
+		case <-time.After(time.Second):
+			t.Fatal("expected EndGameTurn to be called on the last guess")
+		}
+		// 3 active, 2 other guessers → totalGuessers=3, coeff=3/3=1, point=10.
+		drainPub(t, pubCh, 2)
+	})
+
+	t.Run("duplicate correct guess is idempotent (no second score / no guessed notif / no EndGameTurn)", func(t *testing.T) {
+		mgr := baseGameRepo()
+		mgr.GetPlayersMock = func(ctx context.Context, id string) ([]model.Player, error) {
+			return []model.Player{
+				{ID: userID, Nickname: "Nick1", State: model.ActivePlayerState},
+				{ID: "p-2", Nickname: "Nick2", State: model.ActivePlayerState},
+			}, nil
+		}
+		mgr.GetScoresMock = func(ctx context.Context, id string) ([]model.Score, error) {
+			// current user already scored on this turn
+			return []model.Score{{PlayerID: userID, TurnID: turnID, Score: 30}}, nil
+		}
+		mgr.AddScoreMock = func(ctx context.Context, g, u, msg, turn string, point int) error {
+			t.Error("AddScore must not be called for a duplicate correct guess")
+			return nil
+		}
+		mur := &repository.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{ID: userID, Nickname: "Nick1"}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 2)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		gl := &service.MockGameLoop{
+			EndGameTurnMock: func(g string) { t.Error("EndGameTurn must not be called on a duplicate guess") },
+		}
+		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
+
+		if err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !uow.CommitCalled {
+			t.Error("expected Commit to be called (SendMessage write must be committed)")
+		}
+		if mgr.AddScoreCalled {
+			t.Error("AddScoreCalled must be false on duplicate guess")
+		}
+		assertNoPub(t, pubCh)
+	})
+
+	t.Run("userRepo.FindByID fails propagates without writes or pub", func(t *testing.T) {
+		mgr := baseGameRepo()
+		mur := &repository.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{}, errors.New("user not found")
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &service.MockGameLoop{}, nil)
+
+		err := uc.Guess(context.Background(), gameID, userID, theWord)
+		if err == nil {
+			t.Fatal("expected error from FindByID")
+		}
+		if mgr.SendMessageCalled || uow.CommitCalled || mgr.AddScoreCalled {
+			t.Error("no writes expected on FindByID failure")
+		}
+		assertNoPub(t, pubCh)
+	})
+
+	t.Run("GetLatestTurn fails propagates without writes or pub", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{}, errors.New("turn fetch failed")
+			},
+		}
+		mur := &repository.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{ID: userID, Nickname: "Nick1"}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &service.MockGameLoop{}, nil)
+
+		err := uc.Guess(context.Background(), gameID, userID, theWord)
+		if err == nil {
+			t.Fatal("expected error from GetLatestTurn")
+		}
+		if mgr.SendMessageCalled || uow.CommitCalled || mgr.AddScoreCalled {
+			t.Error("no writes expected on GetLatestTurn failure")
+		}
+		assertNoPub(t, pubCh)
+	})
+
+	t.Run("SendMessage fails propagates without AddScore or pub", func(t *testing.T) {
+		mgr := baseGameRepo()
+		mgr.SendMessageMock = func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
+			return model.Message{}, errors.New("sendmessage failed")
+		}
+		mur := &repository.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{ID: userID, Nickname: "Nick1"}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &service.MockGameLoop{}, nil)
+
+		err := uc.Guess(context.Background(), gameID, userID, theWord)
+		if err == nil {
+			t.Fatal("expected error from SendMessage")
+		}
+		if mgr.AddScoreCalled {
+			t.Error("AddScore must not be called when SendMessage fails")
+		}
+		assertNoPub(t, pubCh)
+	})
+
+	t.Run("wrong guess with commit failure does not pub", func(t *testing.T) {
+		mgr := baseGameRepo()
+		mur := &repository.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{ID: userID, Nickname: "Nick1"}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		commitErr := errors.New("commit failed")
+		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &service.MockGameLoop{}, commitErr)
+		_ = uow
+
+		err := uc.Guess(context.Background(), gameID, userID, "nope")
+		if !errors.Is(err, commitErr) {
+			t.Fatalf("expected commitErr, got %v", err)
+		}
+		assertNoPub(t, pubCh)
+	})
+
+	t.Run("EndGameTurn counts active players only (inactive players do not block turn end)", func(t *testing.T) {
+		mgr := baseGameRepo()
+		mgr.GetPlayersMock = func(ctx context.Context, id string) ([]model.Player, error) {
+			return []model.Player{
+				{ID: userID, Nickname: "Nick1", State: model.ActivePlayerState},
+				{ID: "p-2", Nickname: "Nick2", State: model.ActivePlayerState},
+				{ID: "p-3", Nickname: "Nick3", State: model.ActivePlayerState},
+				{ID: "p-gone", Nickname: "Gone", State: model.InactivePlayerState},
+			}, nil
+		}
+		mgr.GetScoresMock = func(ctx context.Context, id string) ([]model.Score, error) {
+			return []model.Score{
+				{PlayerID: "p-2", TurnID: turnID},
+				{PlayerID: "p-3", TurnID: turnID},
+			}, nil
+		}
+		endGameTurnCalled := make(chan struct{}, 1)
+		mgr.AddScoreMock = func(ctx context.Context, g, u, msg, turn string, point int) error { return nil }
+		mur := &repository.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{ID: userID, Nickname: "Nick1"}, nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 2)
+		mgn := &service.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		gl := &service.MockGameLoop{
+			EndGameTurnMock: func(g string) { endGameTurnCalled <- struct{}{} },
+		}
+		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
+
+		if err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		select {
+		case <-endGameTurnCalled:
+		case <-time.After(time.Second):
+			t.Fatal("expected EndGameTurn to fire even when an inactive player is present")
+		}
+		drainPub(t, pubCh, 2)
+	})
+}
