@@ -38,6 +38,7 @@ func NewEmojixUsecase(
 	unitOfWorkFactory repository.UnitOfWorkFactory,
 	gameNotifier service.GameNotifier,
 	gameLoop service.GameLoop,
+	clock service.Clock,
 ) EmojixUsecase {
 	uc := &emojixUsecase{
 		userRepo,
@@ -46,6 +47,7 @@ func NewEmojixUsecase(
 		unitOfWorkFactory,
 		gameNotifier,
 		gameLoop,
+		clock,
 	}
 
 	gameLoop.SetOnTurnEndHandler(func(ctx context.Context, gameID string) {
@@ -62,6 +64,7 @@ type emojixUsecase struct {
 	unitOfWorkFactory repository.UnitOfWorkFactory
 	gameNotifier      service.GameNotifier
 	gameLoop          service.GameLoop
+	clock             service.Clock
 }
 
 func (e *emojixUsecase) GameUpdates(ctx context.Context, gameID string, userID string, handler GameUpdateHandler) error {
@@ -182,7 +185,7 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 	}
 
 	turnEndTime := gameState.TurnStartedAt.Add(turnDuration)
-	now := time.Now()
+	now := e.clock.Now()
 	turnTimedOut := now.After(turnEndTime)
 
 	gameState.TurnEnded = allGuessed || turnTimedOut
@@ -462,12 +465,12 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 
 func (e *emojixUsecase) onTurnEnd(ctx context.Context, gameID string) {
 	e.gameNotifier.PubAll(gameID, &GameTurnEndNotification{})
-	time.Sleep(5 * time.Second)
+	<-e.clock.After(5 * time.Second)
 
 	err := e.newGameTurn(ctx, e.gameRepo, gameID)
 	if err != nil {
 		log.Printf("failed to create new turn, retrying: %v", err)
-		time.Sleep(time.Second)
+		<-e.clock.After(time.Second)
 		err = e.newGameTurn(ctx, e.gameRepo, gameID)
 	}
 	if err != nil {

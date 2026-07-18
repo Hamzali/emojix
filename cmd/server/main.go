@@ -47,6 +47,7 @@ func main() {
 		unitOfWorkFactory,
 		gameNotifier,
 		gameLoop,
+		service.NewRealClock(),
 	)
 
 	view := emojix.NewHTMLView()

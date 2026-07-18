@@ -172,6 +172,7 @@ func TestGameState(t *testing.T) {
 			nil,
 			nil,
 			&service.MockGameLoop{},
+			service.NewRealClock(),
 		)
 
 		ctx := context.Background()
@@ -239,6 +240,7 @@ func TestGameState(t *testing.T) {
 			nil,
 			nil,
 			&service.MockGameLoop{},
+			service.NewRealClock(),
 		)
 
 		ctx := context.Background()
@@ -298,6 +300,7 @@ func TestGameState(t *testing.T) {
 			nil,
 			nil,
 			&service.MockGameLoop{},
+			service.NewRealClock(),
 		)
 
 		ctx := context.Background()
@@ -336,6 +339,7 @@ func TestGameUpdates(t *testing.T) {
 		nil,
 		mgn,
 		&service.MockGameLoop{},
+		service.NewRealClock(),
 	)
 
 	ctx, cancel := context.WithCancel(context.Background())
@@ -369,5 +373,57 @@ func TestGameUpdates(t *testing.T) {
 
 	if cleanupCalled != true {
 		t.Error("expected to unsubscribe")
+	}
+}
+
+func TestGameState_TurnTimedOut(t *testing.T) {
+	clock := service.NewFakeClock()
+	turnStartedAt := clock.Now()
+
+	mgr := &repository.MockGameRepository{
+		GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+			return []model.Player{{ID: "some-user-id", Nickname: "SomeNick"}}, nil
+		},
+		GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+			return model.GameTurn{
+				ID:        "some-turn-id",
+				WordID:    "some-word-id",
+				CreatedAt: turnStartedAt,
+			}, nil
+		},
+		GetMessagesMock: func(ctx context.Context, id string) ([]model.Message, error) {
+			return []model.Message{}, nil
+		},
+		GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+			return []model.Score{}, nil
+		},
+	}
+
+	mwr := &repository.MockWordRepository{
+		FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+			return model.Word{ID: "some-word-id", Word: "Some Word", Hint: "Some Hint"}, nil
+		},
+	}
+
+	// Advance the fake clock past the turn duration. turnDuration is 60s.
+	clock.Advance(time.Minute + time.Second)
+
+	emojixUsecase := usecase.NewEmojixUsecase(
+		nil,
+		mgr,
+		mwr,
+		nil,
+		nil,
+		&service.MockGameLoop{},
+		clock,
+	)
+
+	gameState, err := emojixUsecase.GameState(context.Background(), "some-game-id", "some-user-id")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if !gameState.TurnEnded {
+		t.Errorf("expected TurnEnded to be true after the clock advanced past turnDuration, but got false")
 	}
 }
