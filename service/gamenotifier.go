@@ -5,6 +5,7 @@ import (
 	"encoding/hex"
 	"log"
 	"slices"
+	"sync"
 	"time"
 )
 
@@ -46,10 +47,14 @@ type gameSub struct {
 	LastMsgAt time.Time
 }
 type gameNotifier struct {
+	mu   sync.RWMutex
 	subs []gameSub
 }
 
 func (gn *gameNotifier) Subs(gameID string) []string {
+	gn.mu.RLock()
+	defer gn.mu.RUnlock()
+
 	subs := []string{}
 
 	for _, sub := range gn.subs {
@@ -80,9 +85,14 @@ func (gn *gameNotifier) Sub(gameID string, userID string) (chan GameNotification
 	ch := make(chan GameNotification)
 	subID := generateRandomID()
 	gs := gameSub{subID, userID, gameID, ch, time.Now()}
+
+	gn.mu.Lock()
 	gn.subs = append(gn.subs, gs)
+	gn.mu.Unlock()
 
 	return ch, func() {
+		gn.mu.Lock()
+		defer gn.mu.Unlock()
 		gn.subs = slices.DeleteFunc(gn.subs, func(s gameSub) bool {
 			return s.SubID == subID
 		})
@@ -90,21 +100,33 @@ func (gn *gameNotifier) Sub(gameID string, userID string) (chan GameNotification
 }
 
 func (gn *gameNotifier) Pub(gameID string, userID string, notif GameNotification) {
+	gn.mu.RLock()
+	targets := []gameSub{}
 	for _, s := range gn.subs {
 		if s.GameID != gameID || s.UserID == userID {
 			continue
 		}
+		targets = append(targets, s)
+	}
+	gn.mu.RUnlock()
 
+	for _, s := range targets {
 		s.NotifChan <- notif
 	}
 }
 
 func (gn *gameNotifier) PubAll(gameID string, notif GameNotification) {
+	gn.mu.RLock()
+	targets := []gameSub{}
 	for _, s := range gn.subs {
 		if s.GameID != gameID {
 			continue
 		}
+		targets = append(targets, s)
+	}
+	gn.mu.RUnlock()
 
+	for _, s := range targets {
 		s.NotifChan <- notif
 	}
 }
