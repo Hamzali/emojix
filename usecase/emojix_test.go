@@ -8,6 +8,7 @@ import (
 	"emojix/usecase"
 	"errors"
 	"fmt"
+	"runtime"
 	"testing"
 	"time"
 )
@@ -1734,6 +1735,197 @@ func TestGameWord(t *testing.T) {
 		}
 		if got != "" {
 			t.Errorf("expected empty string on error, got %q", got)
+		}
+	})
+}
+
+// --- T12: TestOnTurnEnd ---
+
+// driveClock repeatedly advances the fake clock so any clock.After timer the
+// handler registers (before or after an Advance call) is fired on a subsequent
+// iteration. This sidesteps the registration race (handler calls clock.After
+// inside its own goroutine) without time.Sleep. done closes when the handler
+// returns.
+func driveClock(t *testing.T, fc *service.FakeClock, done <-chan struct{}) {
+	t.Helper()
+	for i := 0; i < 10000; i++ {
+		select {
+		case <-done:
+			return
+		default:
+		}
+		fc.Advance(time.Hour) // fire any registered timer regardless of its duration
+		runtime.Gosched()
+	}
+	t.Fatal("onTurnEnd did not finish in time")
+}
+
+func TestOnTurnEnd(t *testing.T) {
+	const gameID = "game-1"
+
+	// buildOnTurnEndUsecase wires the common mocks for onTurnEnd tests. The
+	// pubAll/stop signals and counters are returned for assertions.
+	type onTurnEndMocks struct {
+		pubAllCount int
+		getAllCount int
+		addTurnCount int
+		stopCount   int
+		stopGameIDs []string
+		pubAllCh    chan struct{}
+		stopCh      chan string
+	}
+
+	newUsecase := func(t *testing.T, addTurnFn func(call int) (model.GameTurn, error), getAllFn func(call int) ([]model.Word, error), stopAtAll bool) (*service.MockGameLoop, *service.FakeClock, *onTurnEndMocks) {
+		t.Helper()
+		m := &onTurnEndMocks{
+			pubAllCh: make(chan struct{}, 4),
+			stopCh:   make(chan string, 4),
+		}
+		mgr := &repository.MockGameRepository{
+			AddTurnMock: func(ctx context.Context, g, w string) (model.GameTurn, error) {
+				m.addTurnCount++
+				return addTurnFn(m.addTurnCount)
+			},
+		}
+		mwr := &repository.MockWordRepository{
+			GetAllMock: func(ctx context.Context) ([]model.Word, error) {
+				m.getAllCount++
+				return getAllFn(m.getAllCount)
+			},
+		}
+		mgn := &service.MockGameNotifier{
+			PubAllMock: func(g string, n service.GameNotification) {
+				if err := assertCalledWithError("GameID", gameID, g); err != nil {
+					t.Error(err)
+				}
+				if n.GetType() != "turnended" {
+					t.Errorf("PubAll notif type: got %q, want turnended", n.GetType())
+				}
+				m.pubAllCount++
+				m.pubAllCh <- struct{}{}
+			},
+		}
+		gl := &service.MockGameLoop{
+			StopGameMock: func(g string) {
+				m.stopCount++
+				m.stopGameIDs = append(m.stopGameIDs, g)
+				m.stopCh <- g
+			},
+		}
+		clock := service.NewFakeClock()
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, mgn, gl, clock)
+		_ = uc // NewEmojixUsecase installs the OnTurnEndHandler on gl
+		return gl, clock, m
+	}
+
+	// runHandler spawns the captured handler (installed by NewEmojixUsecase) in
+	// a goroutine and drives the fake clock until it returns.
+	runHandler := func(t *testing.T, gl *service.MockGameLoop, clock *service.FakeClock) {
+		t.Helper()
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			gl.FireOnTurnEnd(context.Background(), gameID)
+		}()
+		driveClock(t, clock, done)
+	}
+
+	t.Run("happy path: one PubAll, one AddTurn, no StopGame", func(t *testing.T) {
+		gl, clock, m := newUsecase(t,
+			func(call int) (model.GameTurn, error) { return model.GameTurn{ID: "t-1"}, nil },
+			func(call int) ([]model.Word, error) { return []model.Word{{ID: "w-1", Word: "Alpha"}}, nil },
+			false,
+		)
+		runHandler(t, gl, clock)
+
+		if m.pubAllCount != 1 {
+			t.Errorf("PubAll count: got %d, want 1", m.pubAllCount)
+		}
+		if m.getAllCount != 1 {
+			t.Errorf("GetAll count: got %d, want 1", m.getAllCount)
+		}
+		if m.addTurnCount != 1 {
+			t.Errorf("AddTurn count: got %d, want 1", m.addTurnCount)
+		}
+		if m.stopCount != 0 {
+			t.Errorf("StopGame count: got %d, want 0", m.stopCount)
+		}
+	})
+
+	t.Run("first AddTurn fails, retry succeeds: two AddTurn, no StopGame", func(t *testing.T) {
+		gl, clock, m := newUsecase(t,
+			func(call int) (model.GameTurn, error) {
+				if call == 1 {
+					return model.GameTurn{}, errors.New("addturn failed")
+				}
+				return model.GameTurn{ID: "t-1"}, nil
+			},
+			func(call int) ([]model.Word, error) { return []model.Word{{ID: "w-1", Word: "Alpha"}}, nil },
+			false,
+		)
+		runHandler(t, gl, clock)
+
+		if m.pubAllCount != 1 {
+			t.Errorf("PubAll count: got %d, want 1", m.pubAllCount)
+		}
+		if m.addTurnCount != 2 {
+			t.Errorf("AddTurn count: got %d, want 2", m.addTurnCount)
+		}
+		if m.getAllCount != 2 {
+			t.Errorf("GetAll count: got %d, want 2", m.getAllCount)
+		}
+		if m.stopCount != 0 {
+			t.Errorf("StopGame count: got %d, want 0", m.stopCount)
+		}
+	})
+
+	t.Run("both retries fail: one StopGame(gameID)", func(t *testing.T) {
+		gl, clock, m := newUsecase(t,
+			func(call int) (model.GameTurn, error) { return model.GameTurn{}, errors.New("addturn failed") },
+			func(call int) ([]model.Word, error) { return []model.Word{{ID: "w-1", Word: "Alpha"}}, nil },
+			true,
+		)
+		runHandler(t, gl, clock)
+
+		if m.pubAllCount != 1 {
+			t.Errorf("PubAll count: got %d, want 1", m.pubAllCount)
+		}
+		if m.addTurnCount != 2 {
+			t.Errorf("AddTurn count: got %d, want 2", m.addTurnCount)
+		}
+		if m.stopCount != 1 {
+			t.Errorf("StopGame count: got %d, want 1", m.stopCount)
+		}
+		if len(m.stopGameIDs) != 1 || m.stopGameIDs[0] != gameID {
+			t.Errorf("StopGame gameID: got %v, want [%s]", m.stopGameIDs, gameID)
+		}
+	})
+
+	t.Run("empty word list: two GetAll, zero AddTurn, one StopGame", func(t *testing.T) {
+		// Exercises the T07 ErrNoWords guard inside onTurnEnd: pickGameWord
+		// would panic on Intn(0) without the guard, so this stays a clean
+		// error path that retries once then stops the game.
+		gl, clock, m := newUsecase(t,
+			func(call int) (model.GameTurn, error) {
+				t.Error("AddTurn must not be called when there are no words")
+				return model.GameTurn{}, nil
+			},
+			func(call int) ([]model.Word, error) { return []model.Word{}, nil },
+			true,
+		)
+		runHandler(t, gl, clock)
+
+		if m.pubAllCount != 1 {
+			t.Errorf("PubAll count: got %d, want 1", m.pubAllCount)
+		}
+		if m.getAllCount != 2 {
+			t.Errorf("GetAll count: got %d, want 2", m.getAllCount)
+		}
+		if m.addTurnCount != 0 {
+			t.Errorf("AddTurn count: got %d, want 0", m.addTurnCount)
+		}
+		if m.stopCount != 1 {
+			t.Errorf("StopGame count: got %d, want 1", m.stopCount)
 		}
 	})
 }
