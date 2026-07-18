@@ -4,6 +4,13 @@ CREATE TABLE IF NOT EXISTS games (
 	updated_at INT NOT NULL
 );
 
+CREATE TABLE IF NOT EXISTS users (
+	id TEXT PRIMARY KEY,
+	nickname TEXT NOT NULL,
+	created_at INT NOT NULL,
+	updated_at INT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS words (
 	id TEXT PRIMARY KEY,
 	word TEXT NOT NULL,
@@ -52,10 +59,3 @@ CREATE TABLE IF NOT EXISTS game_scores (
 	FOREIGN KEY (message_id) REFERENCES messages(id),
 	FOREIGN KEY (turn_id) REFERENCES game_turns(id)
 );
-
-CREATE TABLE IF NOT EXISTS users (
-	id TEXT PRIMARY KEY,
-	nickname TEXT NOT NULL,
-	created_at INT NOT NULL,
-	updated_at INT NOT NULL
-)

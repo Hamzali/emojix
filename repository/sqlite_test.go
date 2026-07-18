@@ -257,12 +257,13 @@ func TestGameRepository(t *testing.T) {
 
 	cleanupDB := func() {
 		_, err := db.Exec(`
-			DELETE FROM games;
-			DELETE FROM game_turns;
 			DELETE FROM game_scores;
-			DELETE FROM players;
-			DELETE FROM users;
 			DELETE FROM messages;
+			DELETE FROM players;
+			DELETE FROM game_turns;
+			DELETE FROM games;
+			DELETE FROM users;
+			DELETE FROM words;
 		`)
 		if err != nil {
 			t.Fatal(err)
@@ -492,7 +493,17 @@ func TestGameRepository(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		message, err := repo.SendMessage(context.Background(), game.ID, "turn_id", "user-id", "message_content")
+		_, err = db.Exec("INSERT INTO words (id, word, hint) VALUES ('word-id', 'word', 'hint');")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		turn, err := repo.AddTurn(context.Background(), game.ID, "word-id")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		message, err := repo.SendMessage(context.Background(), game.ID, turn.ID, "user-id", "message_content")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -523,6 +534,21 @@ func TestGameRepository(t *testing.T) {
 		}
 
 		_, err = db.Exec("INSERT INTO users (id, nickname, created_at, updated_at) VALUES ('user-id-2', 'user-nickname-2', ?, ?);", now.UnixMicro(), now.UnixMicro())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec("INSERT INTO games (id, created_at, updated_at) VALUES ('game-id', ?, ?);", now.UnixMicro(), now.UnixMicro())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec("INSERT INTO words (id, word, hint) VALUES ('word-id', 'word', 'hint');")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec("INSERT INTO game_turns (id, game_id, word_id, created_at) VALUES ('turn-id', 'game-id', 'word-id', ?);", now.UnixMicro())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -568,6 +594,17 @@ func TestGameRepository(t *testing.T) {
 	t.Run("AddTurn", func(t *testing.T) {
 		cleanupDB()
 
+		now := time.Now()
+		_, err = db.Exec("INSERT INTO games (id, created_at, updated_at) VALUES ('game-id', ?, ?);", now.UnixMicro(), now.UnixMicro())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec("INSERT INTO words (id, word, hint) VALUES ('word-id', 'word', 'hint');")
+		if err != nil {
+			t.Fatal(err)
+		}
+
 		_, err = repo.AddTurn(context.Background(), "game-id", "word-id")
 		if err != nil {
 			t.Fatal(err)
@@ -576,6 +613,16 @@ func TestGameRepository(t *testing.T) {
 	t.Run("GetLatestTurn", func(t *testing.T) {
 		now := time.Now()
 		cleanupDB()
+
+		_, err = db.Exec("INSERT INTO games (id, created_at, updated_at) VALUES ('game-id', ?, ?);", now.UnixMicro(), now.UnixMicro())
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		_, err = db.Exec("INSERT INTO words (id, word, hint) VALUES ('word-id-1', 'word', 'hint'), ('word-id-2', 'word', 'hint'), ('word-id-3', 'word', 'hint');")
+		if err != nil {
+			t.Fatal(err)
+		}
 
 		_, err = repo.AddTurn(context.Background(), "game-id", "word-id-1")
 		if err != nil {
@@ -607,6 +654,7 @@ func TestGameRepository(t *testing.T) {
 	})
 	t.Run("AddScore", func(t *testing.T) {
 		cleanupDB()
+		insertScoreParents(t, db, "game-id", "player-id", "message-id", "turn-id", "word-id")
 
 		err = repo.AddScore(context.Background(), "game-id", "player-id", "message-id", "turn-id", 10)
 		if err != nil {
@@ -616,6 +664,7 @@ func TestGameRepository(t *testing.T) {
 	t.Run("GetScores", func(t *testing.T) {
 		now := time.Now()
 		cleanupDB()
+		insertScoreParents(t, db, "game-id", "player-id", "message-id", "turn-id", "word-id")
 
 		err = repo.AddScore(context.Background(), "game-id", "player-id", "message-id", "turn-id", 10)
 		if err != nil {
@@ -668,6 +717,73 @@ func TestGameRepository(t *testing.T) {
 			if score.CreatedAt.Compare(expectedScore.CreatedAt) != 1 {
 				t.Errorf("index %d expected created_at after %v but got %v", i, expectedScore.CreatedAt, score.CreatedAt)
 			}
+		}
+	})
+}
+
+// insertScoreParents inserts the full FK parent chain (game, user, word, turn,
+// message) needed by game_scores. It panics on error because the parent rows
+// are a precondition, not the thing under test.
+func insertScoreParents(t *testing.T, db *sql.DB, gameID, playerID, messageID, turnID, wordID string) {
+	t.Helper()
+	now := time.Now().UnixMicro()
+
+	mustExec := func(query string, args ...any) {
+		_, err := db.Exec(query, args...)
+		if err != nil {
+			t.Fatalf("insert parent: %v", err)
+		}
+	}
+
+	mustExec("INSERT INTO games (id, created_at, updated_at) VALUES (?, ?, ?);", gameID, now, now)
+	mustExec("INSERT INTO users (id, nickname, created_at, updated_at) VALUES (?, ?, ?, ?);", playerID, "nick", now, now)
+	mustExec("INSERT INTO words (id, word, hint) VALUES (?, ?, ?);", wordID, "word", "hint")
+	mustExec("INSERT INTO game_turns (id, game_id, word_id, created_at) VALUES (?, ?, ?, ?);", turnID, gameID, wordID, now)
+	mustExec("INSERT INTO messages (id, game_id, player_id, turn_id, content, created_at) VALUES (?, ?, ?, ?, ?, ?);", messageID, gameID, playerID, turnID, "content", now)
+}
+
+func TestForeignKeysEnforced(t *testing.T) {
+	db, err := InitTestDB()
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	t.Run("PRAGMA foreign_keys is ON", func(t *testing.T) {
+		var v string
+		if err := db.QueryRow("PRAGMA foreign_keys").Scan(&v); err != nil {
+			t.Fatal(err)
+		}
+		if v != "1" {
+			t.Fatalf("expected PRAGMA foreign_keys = 1 but got %s", v)
+		}
+	})
+
+	t.Run("players references games and users", func(t *testing.T) {
+		_, err = db.Exec("INSERT INTO players (game_id, player_id, state, joined_at) VALUES ('NoSuch', 'NoSuch', 'active', 0);")
+		if err == nil {
+			t.Fatalf("expected FK violation inserting orphan players row")
+		}
+	})
+
+	t.Run("game_turns references games and words", func(t *testing.T) {
+		_, err = db.Exec("INSERT INTO game_turns (id, game_id, word_id, created_at) VALUES ('NoSuch', 'NoSuch', 'NoSuch', 0);")
+		if err == nil {
+			t.Fatalf("expected FK violation inserting orphan game_turns row")
+		}
+	})
+
+	t.Run("messages references games, users and turns", func(t *testing.T) {
+		_, err = db.Exec("INSERT INTO messages (id, game_id, player_id, turn_id, content, created_at) VALUES ('NoSuch', 'NoSuch', 'NoSuch', 'NoSuch', 'c', 0);")
+		if err == nil {
+			t.Fatalf("expected FK violation inserting orphan messages row")
+		}
+	})
+
+	t.Run("game_scores references everything", func(t *testing.T) {
+		_, err = db.Exec("INSERT INTO game_scores (game_id, player_id, message_id, turn_id, score, created_at) VALUES ('NoSuch', 'NoSuch', 'NoSuch', 'NoSuch', 0, 0);")
+		if err == nil {
+			t.Fatalf("expected FK violation inserting orphan game_scores row")
 		}
 	})
 }

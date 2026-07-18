@@ -61,12 +61,10 @@ func InitSqliteDB(fileName string) (*sql.DB, error) {
 		return db, err
 	}
 
-	// TODO: current test are implemented without foreign key constraints
-	// enable this when you comeback and improve tests
-	// _, err = db.Exec("PRAGMA foreign_keys = ON;")
-	// if err != nil {
-	// 	return nil, err
-	// }
+	_, err = db.Exec("PRAGMA foreign_keys = ON;")
+	if err != nil {
+		return nil, err
+	}
 
 	return db, nil
 }
