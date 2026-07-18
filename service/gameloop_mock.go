@@ -10,16 +10,17 @@ import (
 type MockGameLoop struct {
 	GameLoop
 
-	StartMock               func(ctx context.Context, gameID string, duration time.Duration)
-	StartCalled             bool
-	EndGameTurnMock         func(gameID string)
-	EndGameTurnCalled       bool
-	SetOnTurnEndHandlerMock func(handler OnTurnEndHandler)
+	StartMock                 func(ctx context.Context, gameID string, duration time.Duration)
+	StartCalled               bool
+	EndGameTurnMock           func(gameID string)
+	EndGameTurnCalled         bool
+	SetOnTurnEndHandlerMock   func(handler OnTurnEndHandler)
 	SetOnTurnEndHandlerCalled bool
-	StopGameMock            func(gameID string)
-	StopGameCalled          bool
-	StopMock                func()
-	StopCalled              bool
+	OnTurnEndHandler          OnTurnEndHandler
+	StopGameMock              func(gameID string)
+	StopGameCalled            bool
+	StopMock                  func()
+	StopCalled                bool
 }
 
 func (m *MockGameLoop) Start(ctx context.Context, gameID string, duration time.Duration) {
@@ -38,8 +39,17 @@ func (m *MockGameLoop) EndGameTurn(gameID string) {
 
 func (m *MockGameLoop) SetOnTurnEndHandler(handler OnTurnEndHandler) {
 	m.SetOnTurnEndHandlerCalled = true
+	m.OnTurnEndHandler = handler
 	if m.SetOnTurnEndHandlerMock != nil {
 		m.SetOnTurnEndHandlerMock(handler)
+	}
+}
+
+// FireOnTurnEnd invokes the handler captured by SetOnTurnEndHandler, if any.
+// It allows tests to drive onTurnEnd deterministically without real timers.
+func (m *MockGameLoop) FireOnTurnEnd(ctx context.Context, gameID string) {
+	if m.OnTurnEndHandler != nil {
+		m.OnTurnEndHandler(ctx, gameID)
 	}
 }
 
