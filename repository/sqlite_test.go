@@ -10,43 +10,29 @@ import (
 	_ "modernc.org/sqlite"
 )
 
-func InitTestDB() (*sql.DB, error) {
-	db, err := InitSqliteDB(":memory:")
-	if err != nil {
-		return nil, err
-	}
+// newTestDB returns a freshly migrated in-memory database for a single test.
+// It reuses newMemoryDB (single connection, so the in-memory database stays
+// consistent) and applies the real migrations. Each subtest gets its own
+// database, so no manual cleanup between subtests is needed.
+func newTestDB(t *testing.T) *sql.DB {
+	t.Helper()
+	db := newMemoryDB(t)
 
 	migrator, err := NewSQLiteMigrator(db, ":memory:", "../database/migrations")
 	if err != nil {
-		return nil, err
+		t.Fatalf("new migrator: %v", err)
+	}
+	if err := migrator.UpCmd(); err != nil {
+		t.Fatalf("apply migrations: %v", err)
 	}
 
-	err = migrator.UpCmd()
-	if err != nil {
-		return nil, err
-	}
-
-	return db, nil
+	return db
 }
 
 func TestUserRepository(t *testing.T) {
-	db, err := InitTestDB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
-	repo := NewUserRepository(db)
-
-	cleanupDB := func() {
-		_, err := db.Exec("DELETE FROM users;")
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
 	t.Run("FindByID", func(t *testing.T) {
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewUserRepository(db)
 
 		now := time.Now()
 		now = time.UnixMicro(now.UnixMicro())
@@ -79,7 +65,9 @@ func TestUserRepository(t *testing.T) {
 
 	t.Run("CreateOrUpdate", func(t *testing.T) {
 		t.Run("Update", func(t *testing.T) {
-			cleanupDB()
+			db := newTestDB(t)
+			repo := NewUserRepository(db)
+
 			now := time.Now()
 			now = time.UnixMicro(now.UnixMicro())
 			_, err := db.Exec("INSERT INTO users (id, nickname, created_at, updated_at) VALUES ('some-id', 'some-nickname', ?, ?)", now.UnixMicro(), now.UnixMicro())
@@ -120,14 +108,15 @@ func TestUserRepository(t *testing.T) {
 		})
 
 		t.Run("Create", func(t *testing.T) {
-			cleanupDB()
+			db := newTestDB(t)
+			repo := NewUserRepository(db)
 
 			now := time.Now()
 			userID := "some-id"
 			params := UserCreateOrUpdateParams{
 				Nickname: "some-nickname",
 			}
-			err = repo.CreateOrUpdate(context.Background(), userID, params)
+			err := repo.CreateOrUpdate(context.Background(), userID, params)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -158,23 +147,9 @@ func TestUserRepository(t *testing.T) {
 }
 
 func TestWordRepository(t *testing.T) {
-	db, err := InitTestDB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
-	repo := NewWordRepository(db)
-
-	cleanupDB := func() {
-		_, err := db.Exec("DELETE FROM words;")
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
 	t.Run("GetAll", func(t *testing.T) {
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewWordRepository(db)
 
 		words, err := repo.GetAll(context.Background())
 		if err != nil {
@@ -222,7 +197,8 @@ func TestWordRepository(t *testing.T) {
 	})
 
 	t.Run("FindByID", func(t *testing.T) {
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewWordRepository(db)
 
 		_, err := db.Exec("INSERT INTO words (id, word, hint) VALUES ('1', 'word-1', 'hint-1');")
 		if err != nil {
@@ -247,31 +223,9 @@ func TestWordRepository(t *testing.T) {
 }
 
 func TestGameRepository(t *testing.T) {
-	db, err := InitTestDB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
-
-	repo := NewGameRepository(db)
-
-	cleanupDB := func() {
-		_, err := db.Exec(`
-			DELETE FROM game_scores;
-			DELETE FROM messages;
-			DELETE FROM players;
-			DELETE FROM game_turns;
-			DELETE FROM games;
-			DELETE FROM users;
-			DELETE FROM words;
-		`)
-		if err != nil {
-			t.Fatal(err)
-		}
-	}
-
 	t.Run("FindByID", func(t *testing.T) {
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewGameRepository(db)
 
 		now := time.Now()
 		now = time.UnixMicro(now.UnixMicro())
@@ -298,7 +252,8 @@ func TestGameRepository(t *testing.T) {
 		}
 	})
 	t.Run("Create", func(t *testing.T) {
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewGameRepository(db)
 
 		now := time.Now()
 		game, err := repo.Create(context.Background())
@@ -319,7 +274,8 @@ func TestGameRepository(t *testing.T) {
 		}
 	})
 	t.Run("AddPlayer", func(t *testing.T) {
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewGameRepository(db)
 
 		now := time.Now()
 		game, err := repo.Create(context.Background())
@@ -364,7 +320,8 @@ func TestGameRepository(t *testing.T) {
 	})
 
 	t.Run("SetPlayerState", func(t *testing.T) {
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewGameRepository(db)
 
 		now := time.Now()
 		game, err := repo.Create(context.Background())
@@ -414,7 +371,8 @@ func TestGameRepository(t *testing.T) {
 
 	})
 	t.Run("GetPlayers", func(t *testing.T) {
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewGameRepository(db)
 
 		now := time.Now()
 		game, err := repo.Create(context.Background())
@@ -480,7 +438,8 @@ func TestGameRepository(t *testing.T) {
 		}
 	})
 	t.Run("SendMessage", func(t *testing.T) {
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewGameRepository(db)
 
 		now := time.Now()
 		game, err := repo.Create(context.Background())
@@ -525,10 +484,12 @@ func TestGameRepository(t *testing.T) {
 		}
 	})
 	t.Run("GetMessages", func(t *testing.T) {
-		now := time.Now()
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewGameRepository(db)
 
-		_, err = db.Exec("INSERT INTO users (id, nickname, created_at, updated_at) VALUES ('user-id', 'user-nickname', ?, ?);", now.UnixMicro(), now.UnixMicro())
+		now := time.Now()
+
+		_, err := db.Exec("INSERT INTO users (id, nickname, created_at, updated_at) VALUES ('user-id', 'user-nickname', ?, ?);", now.UnixMicro(), now.UnixMicro())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -592,10 +553,11 @@ func TestGameRepository(t *testing.T) {
 		}
 	})
 	t.Run("AddTurn", func(t *testing.T) {
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewGameRepository(db)
 
 		now := time.Now()
-		_, err = db.Exec("INSERT INTO games (id, created_at, updated_at) VALUES ('game-id', ?, ?);", now.UnixMicro(), now.UnixMicro())
+		_, err := db.Exec("INSERT INTO games (id, created_at, updated_at) VALUES ('game-id', ?, ?);", now.UnixMicro(), now.UnixMicro())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -611,10 +573,12 @@ func TestGameRepository(t *testing.T) {
 		}
 	})
 	t.Run("GetLatestTurn", func(t *testing.T) {
-		now := time.Now()
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewGameRepository(db)
 
-		_, err = db.Exec("INSERT INTO games (id, created_at, updated_at) VALUES ('game-id', ?, ?);", now.UnixMicro(), now.UnixMicro())
+		now := time.Now()
+
+		_, err := db.Exec("INSERT INTO games (id, created_at, updated_at) VALUES ('game-id', ?, ?);", now.UnixMicro(), now.UnixMicro())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -653,20 +617,24 @@ func TestGameRepository(t *testing.T) {
 		}
 	})
 	t.Run("AddScore", func(t *testing.T) {
-		cleanupDB()
+		db := newTestDB(t)
+		repo := NewGameRepository(db)
+
 		insertScoreParents(t, db, "game-id", "player-id", "message-id", "turn-id", "word-id")
 
-		err = repo.AddScore(context.Background(), "game-id", "player-id", "message-id", "turn-id", 10)
+		err := repo.AddScore(context.Background(), "game-id", "player-id", "message-id", "turn-id", 10)
 		if err != nil {
 			t.Fatal(err)
 		}
 	})
 	t.Run("GetScores", func(t *testing.T) {
+		db := newTestDB(t)
+		repo := NewGameRepository(db)
+
 		now := time.Now()
-		cleanupDB()
 		insertScoreParents(t, db, "game-id", "player-id", "message-id", "turn-id", "word-id")
 
-		err = repo.AddScore(context.Background(), "game-id", "player-id", "message-id", "turn-id", 10)
+		err := repo.AddScore(context.Background(), "game-id", "player-id", "message-id", "turn-id", 10)
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -743,11 +711,7 @@ func insertScoreParents(t *testing.T, db *sql.DB, gameID, playerID, messageID, t
 }
 
 func TestForeignKeysEnforced(t *testing.T) {
-	db, err := InitTestDB()
-	if err != nil {
-		t.Fatal(err)
-	}
-	defer db.Close()
+	db := newTestDB(t)
 
 	t.Run("PRAGMA foreign_keys is ON", func(t *testing.T) {
 		var v string
@@ -760,28 +724,28 @@ func TestForeignKeysEnforced(t *testing.T) {
 	})
 
 	t.Run("players references games and users", func(t *testing.T) {
-		_, err = db.Exec("INSERT INTO players (game_id, player_id, state, joined_at) VALUES ('NoSuch', 'NoSuch', 'active', 0);")
+		_, err := db.Exec("INSERT INTO players (game_id, player_id, state, joined_at) VALUES ('NoSuch', 'NoSuch', 'active', 0);")
 		if err == nil {
 			t.Fatalf("expected FK violation inserting orphan players row")
 		}
 	})
 
 	t.Run("game_turns references games and words", func(t *testing.T) {
-		_, err = db.Exec("INSERT INTO game_turns (id, game_id, word_id, created_at) VALUES ('NoSuch', 'NoSuch', 'NoSuch', 0);")
+		_, err := db.Exec("INSERT INTO game_turns (id, game_id, word_id, created_at) VALUES ('NoSuch', 'NoSuch', 'NoSuch', 0);")
 		if err == nil {
 			t.Fatalf("expected FK violation inserting orphan game_turns row")
 		}
 	})
 
 	t.Run("messages references games, users and turns", func(t *testing.T) {
-		_, err = db.Exec("INSERT INTO messages (id, game_id, player_id, turn_id, content, created_at) VALUES ('NoSuch', 'NoSuch', 'NoSuch', 'NoSuch', 'c', 0);")
+		_, err := db.Exec("INSERT INTO messages (id, game_id, player_id, turn_id, content, created_at) VALUES ('NoSuch', 'NoSuch', 'NoSuch', 'NoSuch', 'c', 0);")
 		if err == nil {
 			t.Fatalf("expected FK violation inserting orphan messages row")
 		}
 	})
 
 	t.Run("game_scores references everything", func(t *testing.T) {
-		_, err = db.Exec("INSERT INTO game_scores (game_id, player_id, message_id, turn_id, score, created_at) VALUES ('NoSuch', 'NoSuch', 'NoSuch', 'NoSuch', 0, 0);")
+		_, err := db.Exec("INSERT INTO game_scores (game_id, player_id, message_id, turn_id, score, created_at) VALUES ('NoSuch', 'NoSuch', 'NoSuch', 'NoSuch', 0, 0);")
 		if err == nil {
 			t.Fatalf("expected FK violation inserting orphan game_scores row")
 		}

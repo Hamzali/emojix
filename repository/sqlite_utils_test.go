@@ -20,6 +20,7 @@ func newMemoryDB(t *testing.T) *sql.DB {
 		t.Fatalf("open memory db: %v", err)
 	}
 	db.SetMaxOpenConns(1)
+	t.Cleanup(func() { db.Close() })
 	return db
 }
 
