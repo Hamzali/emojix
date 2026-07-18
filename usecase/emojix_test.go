@@ -435,67 +435,120 @@ func TestGameState(t *testing.T) {
 }
 
 func TestGameUpdates(t *testing.T) {
-	ch := make(chan service.GameNotification)
-	cleanupCalled := false
-	mgn := &service.MockGameNotifier{
-		SubMock: func(gameID, userID string) (chan service.GameNotification, func()) {
-			err := assertCalledWithError("GameID", "some-game-id", gameID)
-			if err != nil {
-				t.Error(err)
-			}
-
-			err = assertCalledWithError("UserID", "some-user-id", userID)
-			if err != nil {
-				t.Error(err)
-			}
-
-			return ch, func() {
-
-				cleanupCalled = true
-			}
+	cases := []struct {
+		name      string
+		notif     service.GameNotification
+		preCancel bool // cancel ctx before calling GameUpdates (cancellation case)
+		handlerErr error
+		wantType  string
+		wantData  string
+		wantErr   error
+	}{
+		{
+			name:     "join",
+			notif:    &usecase.GameJoinNotification{Nickname: "nick-1", PlayerID: "player-1"},
+			wantType: "join",
+			wantData: "player-1,nick-1",
+		},
+		{
+			name:     "msg",
+			notif:    &usecase.GameMsgNotification{UserID: "u1", Nickname: "n1", Content: "hi"},
+			wantType: "msg",
+			wantData: "u1,n1,hi",
+		},
+		{
+			name:     "guessed",
+			notif:    &usecase.GameCorrectGuessNotification{UserID: "u1", Nickname: "n1"},
+			wantType: "guessed",
+			wantData: "u1,n1",
+		},
+		{
+			name:     "turnended",
+			notif:    &usecase.GameTurnEndNotification{},
+			wantType: "turnended",
+			wantData: "",
+		},
+		{
+			name:     "left",
+			notif:    &usecase.UserLeftNotification{UserID: "u1"},
+			wantType: "left",
+			wantData: "u1",
+		},
+		{
+			name:       "handler error aborts and returns error",
+			notif:      &usecase.GameMsgNotification{UserID: "u1", Nickname: "n1", Content: "hi"},
+			handlerErr: errors.New("boom"),
+			wantErr:    errors.New("boom"),
+		},
+		{
+			name:      "context cancellation returns nil with no notif",
+			preCancel: true,
 		},
 	}
-	emojixUsecase := usecase.NewEmojixUsecase(
-		nil,
-		nil,
-		nil,
-		nil,
-		mgn,
-		&service.MockGameLoop{},
-		service.NewRealClock(),
-	)
 
-	ctx, cancel := context.WithCancel(context.Background())
-	go func() {
-		ch <- &usecase.GameJoinNotification{Nickname: "nick-1", PlayerID: "player-1"}
-		cancel()
-	}()
+	for _, tc := range cases {
+		tc := tc
+		t.Run(tc.name, func(t *testing.T) {
+			ch := make(chan service.GameNotification) // unbuffered: a send blocks until GameUpdates reads it
+			cleanupCount := 0
+			mgn := &service.MockGameNotifier{
+				SubMock: func(gameID, userID string) (chan service.GameNotification, func()) {
+					if err := assertCalledWithError("GameID", "some-game-id", gameID); err != nil {
+						t.Error(err)
+					}
+					if err := assertCalledWithError("UserID", "some-user-id", userID); err != nil {
+						t.Error(err)
+					}
+					return ch, func() { cleanupCount++ }
+				},
+			}
+			uc := usecase.NewEmojixUsecase(nil, nil, nil, nil, mgn, &service.MockGameLoop{}, service.NewRealClock())
 
-	msgCount := 0
-	err := emojixUsecase.GameUpdates(ctx, "some-game-id", "some-user-id", func(notifType string, content string) error {
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
 
-		msgCount += 1
+			var gotType, gotData string
+			handler := func(notifType, content string) error {
+				gotType = notifType
+				gotData = content
+				return tc.handlerErr
+			}
 
-		expectedType := "join"
-		if expectedType != notifType {
-			t.Errorf("expected to have notif type '%s' but got '%s'", expectedType, notifType)
-		}
+			if tc.preCancel {
+				cancel()
+			} else {
+				// Deliver the notif, then cancel so GameUpdates returns. The send
+				// blocks until GameUpdates reads it, guaranteeing the notif is
+				// processed before ctx is cancelled (no time.Sleep).
+				go func() {
+					ch <- tc.notif
+					cancel()
+				}()
+			}
 
-		expectedContent := "player-1,nick-1"
-		if expectedContent != content {
+			err := uc.GameUpdates(ctx, "some-game-id", "some-user-id", handler)
 
-			t.Errorf("expected to have notif content '%s' but got '%s'", expectedContent, content)
-		}
+			if tc.wantErr != nil {
+				if err == nil || err.Error() != tc.wantErr.Error() {
+					t.Fatalf("expected error %v, got %v", tc.wantErr, err)
+				}
+			} else if err != nil {
+				t.Fatalf("expected no error, got %v", err)
+			}
 
-		return nil
-	})
+			if cleanupCount != 1 {
+				t.Errorf("cleanup: got %d, want 1", cleanupCount)
+			}
 
-	if err != nil {
-		t.Errorf("expected to not error but got %v", err)
-	}
-
-	if cleanupCalled != true {
-		t.Error("expected to unsubscribe")
+			if !tc.preCancel && tc.wantType != "" {
+				if gotType != tc.wantType {
+					t.Errorf("notif type: got %q, want %q", gotType, tc.wantType)
+				}
+				if gotData != tc.wantData {
+					t.Errorf("notif data: got %q, want %q", gotData, tc.wantData)
+				}
+			}
+		})
 	}
 }
 
