@@ -417,9 +417,13 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 	// TODO: make fancier word comparison
 	guessedWord := strings.EqualFold(content, gameWord)
 	if !guessedWord {
-		err = uow.Commit()
+		// Only publish after a successful commit so a failed commit does not
+		// broadcast a chat message that was never persisted.
+		if err = uow.Commit(); err != nil {
+			return err
+		}
 		go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, content})
-		return err
+		return nil
 	}
 
 	// check if the turn is ended
@@ -433,16 +437,30 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 		return err
 	}
 
-	guessedCount := 1
-	for _, p := range players {
-		for _, s := range scores {
-			if s.PlayerID == p.ID && s.TurnID == turnID {
-				guessedCount += 1
-			}
+	// Duplicate-correct-guess: this user already scored on this turn. Idempotent
+	// no-op — no second AddScore, no guessed notif, no EndGameTurn. The
+	// SendMessage above is still committed so the chat record stays consistent.
+	for _, s := range scores {
+		if s.PlayerID == userID && s.TurnID == turnID {
+			return uow.Commit()
 		}
 	}
 
-	pointCoeff := len(players) / guessedCount
+	// Count distinct players who already guessed this turn. The current user is
+	// about to be scored, so total guessers after this AddScore is len+1.
+	// TODO: the scoring formula below drifts from the README (+5 base, +1/sec
+	// left, -1 wrong guess). Alignment is a separate backlog decision.
+	guessedPlayers := map[string]struct{}{}
+	for _, s := range scores {
+		if s.TurnID == turnID {
+			guessedPlayers[s.PlayerID] = struct{}{}
+		}
+	}
+	totalGuessers := len(guessedPlayers) + 1
+
+	// Use active players only; inactive/Left players must not block turn end.
+	activePlayers := e.filterActivePlayers(players)
+	pointCoeff := len(activePlayers) / totalGuessers
 	basePoint := 10
 	point := basePoint * pointCoeff
 
@@ -459,7 +477,7 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, "***"})
 	go e.gameNotifier.Pub(gameID, userID, &GameCorrectGuessNotification{userID, currPlayer.Nickname})
 
-	if guessedCount == len(players) {
+	if totalGuessers == len(activePlayers) {
 		e.gameLoop.EndGameTurn(gameID)
 	}
 
