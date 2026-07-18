@@ -31,7 +31,10 @@ func main() {
 
 	switch cmd {
 	case "create":
-		err = migartor.CreateCmd()
+		if len(os.Args) < 3 {
+			log.Fatalln("migration name is missing")
+		}
+		err = migartor.CreateCmd(os.Args[2])
 	case "up":
 		err = migartor.UpCmd()
 	case "reset":
