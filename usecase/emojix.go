@@ -95,6 +95,7 @@ func (gmn *UserLeftNotification) GetType() string {
 func (gmn *UserLeftNotification) GetData() string {
 	return fmt.Sprintf("%s", gmn.UserID)
 }
+
 func (e *emojixUsecase) KickInactiveUser(ctx context.Context, gameID, userID string) error {
 	activePlayers := e.gameNotifier.Subs(gameID)
 	if slices.Contains(activePlayers, userID) {
@@ -105,10 +106,6 @@ func (e *emojixUsecase) KickInactiveUser(ctx context.Context, gameID, userID str
 	go e.gameNotifier.Pub(gameID, userID, &UserLeftNotification{userID})
 
 	return err
-}
-
-func (gmn *UserLeftNotification) ParseData(data string) error {
-	return nil
 }
 
 func maskContent(content string, word string, guessedWord bool) string {
@@ -364,10 +361,6 @@ func (gmn *GameCorrectGuessNotification) GetData() string {
 	return fmt.Sprintf("%s,%s", gmn.UserID, gmn.Nickname)
 }
 
-func (gmn *GameCorrectGuessNotification) ParseData(data string) error {
-	return nil
-}
-
 type GameTurnEndNotification struct {
 }
 
@@ -377,10 +370,6 @@ func (gmn *GameTurnEndNotification) GetType() string {
 
 func (gmn *GameTurnEndNotification) GetData() string {
 	return ""
-}
-
-func (gmn *GameTurnEndNotification) ParseData(data string) error {
-	return nil
 }
 
 func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string, content string) error {

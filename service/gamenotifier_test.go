@@ -19,10 +19,6 @@ func (t testNotif) GetType() string {
 	return t.notiftype
 }
 
-func (t testNotif) ParseData(data string) error {
-	return nil
-}
-
 func TestGameNotifierPubSub(t *testing.T) {
 	notifier := service.NewGameNotifier()
 
