@@ -7,6 +7,7 @@ import (
 	"log"
 	"os"
 	"path"
+	"path/filepath"
 	"time"
 )
 
@@ -98,16 +99,15 @@ func (m *Migrator) readLocalMigrationFiles() ([]string, error) {
 	return result, nil
 }
 
-func (m *Migrator) CreateCmd() error {
-	if len(os.Args) != 3 {
-		return errors.New("migration name is missing")
-	}
-
-	migrationName := os.Args[2]
-	if migrationName == "" {
+// CreateCmd creates a new migration file named "<unix>_<name>.sql" in the migration
+// dir. The name is passed explicitly rather than read from os.Args so the method is
+// testable and free of hidden global-state dependencies; the CLI wrapper in
+// cmd/migrations passes the argument it parses from os.Args[2].
+func (m *Migrator) CreateCmd(name string) error {
+	if name == "" {
 		return errors.New("invalid migration name")
 	}
-	filename := fmt.Sprintf("%d_%s.sql", time.Now().Unix(), migrationName)
+	filename := fmt.Sprintf("%d_%s.sql", time.Now().Unix(), name)
 
 	err := os.WriteFile(path.Join(m.basedir, filename), []byte("-- write your migration here"), 0777)
 
@@ -140,6 +140,9 @@ func (m *Migrator) UpCmd() error {
 			log.Printf("failed to apply %s\n", mf)
 			return err
 		}
+		// Keep the in-memory record in sync so a subsequent UpCmd in the same
+		// process is a no-op rather than re-applying already-applied files.
+		m.appliedMigration = append(m.appliedMigration, Migration{Name: mf})
 	}
 
 	return nil
@@ -191,7 +194,7 @@ func (m *Migrator) ResetCmd() error {
 
 func (m *Migrator) SeedCmd() error {
 	log.Printf("applying seed.sql")
-	content, err := os.ReadFile("./database/seed.sql")
+	content, err := os.ReadFile(filepath.Join(filepath.Dir(m.basedir), "seed.sql"))
 	if err != nil {
 		return err
 	}
