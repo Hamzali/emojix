@@ -272,21 +272,144 @@ func TestGameState(t *testing.T) {
 
 	})
 
-	// TODO: complete the tests even more to discover more bugs
-	t.Run("should order messages from oldest to newest", func(t *testing.T) {
+	// NOTE: the timeout branch of TurnEnded is covered separately by
+	// TestGameState_TurnTimedOut (uses the T13 FakeClock seam).
 
+	t.Run("should order messages from newest to oldest", func(t *testing.T) {
+		expectedGameID := "some-game-id"
+		mgr := &repository.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{{ID: "p-1", Nickname: "Player1"}}, nil
+			},
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: "last-turn-id", WordID: "some-word-id", CreatedAt: time.Now()}, nil
+			},
+			GetMessagesMock: func(ctx context.Context, id string) ([]model.Message, error) {
+				err := assertCalledWithError("GameID", expectedGameID, id)
+				if err != nil {
+					t.Error(err)
+				}
+				// Storage order: oldest first, newest last.
+				return []model.Message{
+					{ID: "m-old", PlayerID: "p-1", Content: "old"},
+					{ID: "m-mid", PlayerID: "p-1", Content: "mid"},
+					{ID: "m-new", PlayerID: "p-1", Content: "new"},
+				}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				return []model.Score{}, nil
+			},
+		}
+		mwr := &repository.MockWordRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+				return model.Word{ID: "some-word-id", Word: "Some Word", Hint: "Some Hint"}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
+
+		gameState, err := uc.GameState(context.Background(), expectedGameID, "p-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		// GameState reverses the repo message order so newest is first.
+		got := []string{}
+		for _, m := range gameState.Messages {
+			got = append(got, m.Content)
+		}
+		want := []string{"new", "mid", "old"}
+		if fmt.Sprintf("%v", got) != fmt.Sprintf("%v", want) {
+			t.Errorf("messages: got %v, want %v (newest first)", got, want)
+		}
 	})
 
 	t.Run("should sum up all scores in leaderboard", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{
+					{ID: "p-1", Nickname: "Player1"},
+					{ID: "p-2", Nickname: "Player2"},
+				}, nil
+			},
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: "latest-turn", WordID: "some-word-id", CreatedAt: time.Now()}, nil
+			},
+			GetMessagesMock: func(ctx context.Context, id string) ([]model.Message, error) {
+				return []model.Message{}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				// Scores span multiple turns; buildLeaderboard must sum them.
+				return []model.Score{
+					{PlayerID: "p-1", Score: 10, TurnID: "older-turn"},
+					{PlayerID: "p-1", Score: 5, TurnID: "latest-turn"},
+					{PlayerID: "p-2", Score: 3, TurnID: "older-turn"},
+				}, nil
+			},
+		}
+		mwr := &repository.MockWordRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+				return model.Word{ID: "some-word-id", Word: "Some Word", Hint: "Some Hint"}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
 
+		gameState, err := uc.GameState(context.Background(), "some-game-id", "p-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		scoreByPlayer := map[string]int{}
+		for _, l := range gameState.Leaderboard {
+			scoreByPlayer[l.PlayerID] = l.Score
+		}
+		if scoreByPlayer["p-1"] != 15 {
+			t.Errorf("p-1 score: got %d, want 15 (sum across turns)", scoreByPlayer["p-1"])
+		}
+		if scoreByPlayer["p-2"] != 3 {
+			t.Errorf("p-2 score: got %d, want 3", scoreByPlayer["p-2"])
+		}
 	})
 
 	t.Run("turn should end when all players guessed the word", func(t *testing.T) {
+		mgr := &repository.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{
+					{ID: "p-1", Nickname: "Player1"},
+					{ID: "p-2", Nickname: "Player2"},
+					{ID: "p-3", Nickname: "Player3"},
+				}, nil
+			},
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: "last-turn-id", WordID: "some-word-id", CreatedAt: time.Now()}, nil
+			},
+			GetMessagesMock: func(ctx context.Context, id string) ([]model.Message, error) {
+				return []model.Message{}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				// Every active player has a score on the latest turn → allGuessed.
+				return []model.Score{
+					{PlayerID: "p-1", Score: 10, TurnID: "last-turn-id"},
+					{PlayerID: "p-2", Score: 10, TurnID: "last-turn-id"},
+					{PlayerID: "p-3", Score: 10, TurnID: "last-turn-id"},
+				}, nil
+			},
+		}
+		mwr := &repository.MockWordRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+				return model.Word{ID: "some-word-id", Word: "Some Word", Hint: "Some Hint"}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &service.MockGameLoop{}, service.NewRealClock())
 
+		gameState, err := uc.GameState(context.Background(), "some-game-id", "p-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !gameState.TurnEnded {
+			t.Errorf("expected TurnEnded to be true when all active players guessed, got false")
+		}
 	})
-	t.Run("should ", func(t *testing.T) {
 
-	})
 	t.Run("GameRepository.GetPlayer Failure", func(t *testing.T) {
 		mgr := &repository.MockGameRepository{}
 		mockErr := errors.New("players failed")
