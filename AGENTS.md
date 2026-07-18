@@ -16,6 +16,7 @@ always make sure you are working on the latest version of the code
 always use TDD approach for implementation, red-green cycles and makes sure to have meaningful coverage
 always go for simplicity in mind, avoid dependencies unless you have to, if you have to install justify what you install and make sure from official sources
 always validate your changes using standard go tools and tests, vet, fmt and test
+run `script/test.sh` before committing; it runs `gofmt`, `go vet`, and `go test -race -cover ./...`
 always commit and push changes when you are done, use conventional commit style
 always ask questions to clarify and improve, ask one by one, if answer is in the code find it
 
