@@ -10,109 +10,66 @@ import (
 	"emojix/usecase"
 	"errors"
 	"fmt"
+	"reflect"
 	"runtime"
 	"testing"
 	"time"
 )
 
-func assertValueErrorMsg(fieldName string, expectedValue any, testValue any) string {
-	return fmt.Sprintf("expected to have %s '%v' but got '%v'", fieldName, expectedValue, testValue)
-}
-func assertValueError(field string, expectedValue any, testValue any) error {
-	if expectedValue == testValue {
-		return nil
+// assertValue reports a mismatch between an expected and actual field value.
+// reflect.DeepEqual keeps it safe for non-comparable types (slices, maps),
+// which comparing `any` values with == would panic on.
+func assertValue(t *testing.T, field string, expectedValue any, testValue any) {
+	t.Helper()
+	if !reflect.DeepEqual(expectedValue, testValue) {
+		t.Errorf("expected to have %s '%v' but got '%v'", field, expectedValue, testValue)
 	}
-	msg := assertValueErrorMsg(field, expectedValue, testValue)
-	return errors.New(msg)
-}
-
-func assertCalledWithMsg(paramName string, expectedParam any, testParam any) string {
-	return fmt.Sprintf("expected to have called param %s with value '%v' but got '%v'", paramName, expectedParam, testParam)
-}
-func assertCalledWithError(paramName string, expectedParam any, testParam any) error {
-	if expectedParam == testParam {
-		return nil
-	}
-	msg := assertCalledWithMsg(paramName, expectedParam, testParam)
-	return errors.New(msg)
 }
 
-func assertGameState(expectedGameState model.GameState, gameState model.GameState) error {
-	// basic call assertions
-	err := assertValueError("GameID", expectedGameState.GameID, gameState.GameID)
-	if err != nil {
-		return err
+// assertCalledWith reports a mismatch between an expected and actual
+// mock-call parameter.
+func assertCalledWith(t *testing.T, paramName string, expectedParam any, testParam any) {
+	t.Helper()
+	if !reflect.DeepEqual(expectedParam, testParam) {
+		t.Errorf("expected to have called param %s with value '%v' but got '%v'", paramName, expectedParam, testParam)
 	}
-	err = assertValueError("CurrentUserID", expectedGameState.CurrentUserID, gameState.CurrentUserID)
-	if err != nil {
-		return err
-	}
+}
 
-	// turn assertions
-	err = assertValueError("TurnID", expectedGameState.TurnID, gameState.TurnID)
-	if err != nil {
-		return err
-	}
-	err = assertValueError("TurnEnded", expectedGameState.TurnEnded, gameState.TurnEnded)
-	if err != nil {
-		return err
-	}
-	err = assertValueError("Word", expectedGameState.Word, gameState.Word)
-	if err != nil {
-		return err
-	}
-	err = assertValueError("Hint", expectedGameState.Hint, gameState.Hint)
-	if err != nil {
-		return err
-	}
+// assertGameState reports every mismatch between the expected and actual
+// GameState, not just the first one.
+func assertGameState(t *testing.T, expectedGameState model.GameState, gameState model.GameState) {
+	t.Helper()
 
-	// message assertions
-	err = assertValueError("Message Length", len(expectedGameState.Messages), len(gameState.Messages))
-	if err != nil {
-		return err
-	}
+	assertValue(t, "GameID", expectedGameState.GameID, gameState.GameID)
+	assertValue(t, "CurrentUserID", expectedGameState.CurrentUserID, gameState.CurrentUserID)
+	assertValue(t, "TurnID", expectedGameState.TurnID, gameState.TurnID)
+	assertValue(t, "TurnEnded", expectedGameState.TurnEnded, gameState.TurnEnded)
+	assertValue(t, "Word", expectedGameState.Word, gameState.Word)
+	assertValue(t, "Hint", expectedGameState.Hint, gameState.Hint)
+
+	assertValue(t, "Message Length", len(expectedGameState.Messages), len(gameState.Messages))
 	for i, m := range gameState.Messages {
+		if i >= len(expectedGameState.Messages) {
+			break
+		}
 		expectedMsg := expectedGameState.Messages[i]
-		err = assertValueError(fmt.Sprintf("Message[%d].Nickname", i), expectedMsg.Nickname, m.Nickname)
-		if err != nil {
-			return err
-		}
-		err = assertValueError(fmt.Sprintf("Message[%d].Me", i), expectedMsg.Me, m.Me)
-		if err != nil {
-			return err
-		}
-		err = assertValueError(fmt.Sprintf("Message[%d].Content", i), expectedMsg.Content, m.Content)
-		if err != nil {
-			return err
-		}
+		assertValue(t, fmt.Sprintf("Message[%d].Nickname", i), expectedMsg.Nickname, m.Nickname)
+		assertValue(t, fmt.Sprintf("Message[%d].Me", i), expectedMsg.Me, m.Me)
+		assertValue(t, fmt.Sprintf("Message[%d].Content", i), expectedMsg.Content, m.Content)
 	}
 
-	// leaderboard assertions
-	err = assertValueError("Leaderboard Length", len(expectedGameState.Leaderboard), len(gameState.Leaderboard))
-	if err != nil {
-		return err
-	}
+	assertValue(t, "Leaderboard Length", len(expectedGameState.Leaderboard), len(gameState.Leaderboard))
 	for i, l := range gameState.Leaderboard {
+		if i >= len(expectedGameState.Leaderboard) {
+			break
+		}
 		expectedLeaderboard := expectedGameState.Leaderboard[i]
-		err = assertValueError(fmt.Sprintf("Leaderboard[%d].Nickname", i), expectedLeaderboard.Nickname, l.Nickname)
-		if err != nil {
-			return err
-		}
-		err = assertValueError(fmt.Sprintf("Leaderboard[%d].Me", i), expectedLeaderboard.Me, l.Me)
-		if err != nil {
-			return err
-		}
-		err = assertValueError(fmt.Sprintf("Leaderboard[%d].Score", i), expectedLeaderboard.Score, l.Score)
-		if err != nil {
-			return err
-		}
-		err = assertValueError(fmt.Sprintf("Leaderboard[%d].GuessedWord", i), expectedLeaderboard.GuessedWord, l.GuessedWord)
-		if err != nil {
-			return err
-		}
+		assertValue(t, fmt.Sprintf("Leaderboard[%d].PlayerID", i), expectedLeaderboard.PlayerID, l.PlayerID)
+		assertValue(t, fmt.Sprintf("Leaderboard[%d].Nickname", i), expectedLeaderboard.Nickname, l.Nickname)
+		assertValue(t, fmt.Sprintf("Leaderboard[%d].Me", i), expectedLeaderboard.Me, l.Me)
+		assertValue(t, fmt.Sprintf("Leaderboard[%d].Score", i), expectedLeaderboard.Score, l.Score)
+		assertValue(t, fmt.Sprintf("Leaderboard[%d].GuessedWord", i), expectedLeaderboard.GuessedWord, l.GuessedWord)
 	}
-
-	return err
 }
 
 func TestGameState(t *testing.T) {
@@ -121,19 +78,13 @@ func TestGameState(t *testing.T) {
 		expectedGameID := "some-game-id"
 		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
-				errMsg := assertCalledWithError("GameID", expectedGameID, id)
-				if errMsg != nil {
-					t.Error(errMsg)
-				}
+				assertCalledWith(t, "GameID", expectedGameID, id)
 				return []model.Player{
 					{ID: "some-user-id", Nickname: "SomeNick"},
 				}, nil
 			},
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				errMsg := assertCalledWithError("GameID", expectedGameID, id)
-				if errMsg != nil {
-					t.Error(errMsg)
-				}
+				assertCalledWith(t, "GameID", expectedGameID, id)
 				return model.GameTurn{
 					ID:        "some-turn-id",
 					WordID:    "some-word-id",
@@ -141,17 +92,11 @@ func TestGameState(t *testing.T) {
 				}, nil
 			},
 			GetMessagesMock: func(ctx context.Context, id string) ([]model.Message, error) {
-				errMsg := assertCalledWithError("GameID", expectedGameID, id)
-				if errMsg != nil {
-					t.Error(errMsg)
-				}
+				assertCalledWith(t, "GameID", expectedGameID, id)
 				return []model.Message{}, nil
 			},
 			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
-				errMsg := assertCalledWithError("GameID", expectedGameID, id)
-				if errMsg != nil {
-					t.Error(errMsg)
-				}
+				assertCalledWith(t, "GameID", expectedGameID, id)
 				return []model.Score{}, nil
 			},
 		}
@@ -159,10 +104,7 @@ func TestGameState(t *testing.T) {
 		expectedWordID := "some-word-id"
 		mwr := &repotest.MockWordRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
-				errMsg := assertCalledWithError("WordID", expectedWordID, id)
-				if errMsg != nil {
-					t.Error(errMsg)
-				}
+				assertCalledWith(t, "WordID", expectedWordID, id)
 
 				return model.Word{ID: "some-word-id", Word: "Some Word", Hint: "Some Hint"}, nil
 			},
@@ -184,7 +126,7 @@ func TestGameState(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = assertGameState(model.GameState{
+		assertGameState(t, model.GameState{
 			GameID:        "some-game-id",
 			CurrentUserID: "some-user-id",
 			TurnID:        "some-turn-id",
@@ -193,13 +135,9 @@ func TestGameState(t *testing.T) {
 			Hint:          "Some Hint",
 			Messages:      []model.GameStateMessage{},
 			Leaderboard: []model.LeaderboardEntry{
-				{Nickname: "SomeNick", Me: true, GuessedWord: false, Score: 0},
+				{PlayerID: "some-user-id", Nickname: "SomeNick", Me: true, GuessedWord: false, Score: 0},
 			},
 		}, gameState)
-		if err != nil {
-			t.Error(err)
-			return
-		}
 
 	})
 
@@ -252,7 +190,7 @@ func TestGameState(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		err = assertGameState(model.GameState{
+		assertGameState(t, model.GameState{
 			GameID:        "some-game-id",
 			CurrentUserID: "p-1",
 			TurnID:        "last-turn-id",
@@ -268,10 +206,6 @@ func TestGameState(t *testing.T) {
 				{PlayerID: "p-3", Nickname: "Player3", Me: false, GuessedWord: false, Score: 0},
 			},
 		}, gameState)
-		if err != nil {
-			t.Error(err)
-			return
-		}
 
 	})
 
@@ -288,10 +222,7 @@ func TestGameState(t *testing.T) {
 				return model.GameTurn{ID: "last-turn-id", WordID: "some-word-id", CreatedAt: time.Now()}, nil
 			},
 			GetMessagesMock: func(ctx context.Context, id string) ([]model.Message, error) {
-				err := assertCalledWithError("GameID", expectedGameID, id)
-				if err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", expectedGameID, id)
 				// Storage order: oldest first, newest last.
 				return []model.Message{
 					{ID: "m-old", PlayerID: "p-1", Content: "old"},
@@ -413,7 +344,7 @@ func TestGameState(t *testing.T) {
 		}
 	})
 
-	t.Run("GameRepository.GetPlayer Failure", func(t *testing.T) {
+	t.Run("returns error when GetPlayers fails", func(t *testing.T) {
 		mgr := &repotest.MockGameRepository{}
 		mockErr := errors.New("players failed")
 		mgr.GetPlayersMock = func(ctx context.Context, id string) ([]model.Player, error) {
@@ -496,12 +427,8 @@ func TestGameUpdates(t *testing.T) {
 			cleanupCount := 0
 			mgn := &servicetest.MockGameNotifier{
 				SubMock: func(gameID, userID string) (chan service.GameNotification, func()) {
-					if err := assertCalledWithError("GameID", "some-game-id", gameID); err != nil {
-						t.Error(err)
-					}
-					if err := assertCalledWithError("UserID", "some-user-id", userID); err != nil {
-						t.Error(err)
-					}
+					assertCalledWith(t, "GameID", "some-game-id", gameID)
+					assertCalledWith(t, "UserID", "some-user-id", userID)
 					return ch, func() { cleanupCount++ }
 				},
 			}
@@ -635,18 +562,12 @@ func TestInitGame(t *testing.T) {
 				return model.Game{ID: "game-1"}, nil
 			},
 			AddPlayerMock: func(ctx context.Context, gameID, playerID string) error {
-				if err := assertCalledWithError("GameID", "game-1", gameID); err != nil {
-					t.Error(err)
-				}
-				if err := assertCalledWithError("PlayerID", userID, playerID); err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", "game-1", gameID)
+				assertCalledWith(t, "PlayerID", userID, playerID)
 				return nil
 			},
 			AddTurnMock: func(ctx context.Context, gameID, wordID string) (model.GameTurn, error) {
-				if err := assertCalledWithError("GameID", "game-1", gameID); err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", "game-1", gameID)
 				if wordID != "w1" && wordID != "w2" {
 					t.Errorf("AddTurn wordID %q not from GetAll list", wordID)
 				}
@@ -968,9 +889,7 @@ func TestGuess(t *testing.T) {
 	baseGameRepo := func() *repotest.MockGameRepository {
 		return &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				if err := assertCalledWithError("GameID", gameID, id); err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", gameID, id)
 				return model.GameTurn{ID: turnID, WordID: wordID}, nil
 			},
 			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
@@ -1090,9 +1009,7 @@ func TestGuess(t *testing.T) {
 		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
 		gl := &servicetest.MockGameLoop{
 			EndGameTurnMock: func(g string) {
-				if err := assertCalledWithError("GameID", gameID, g); err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", gameID, g)
 				endGameTurnCalled <- struct{}{}
 			},
 		}
@@ -1293,9 +1210,7 @@ func TestMessage(t *testing.T) {
 	murFor := func(nick string, err error) *repotest.MockUserRepository {
 		return &repotest.MockUserRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
-				if err := assertCalledWithError("UserID", userID, id); err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "UserID", userID, id)
 				return model.User{ID: userID, Nickname: nick}, err
 			},
 		}
@@ -1304,35 +1219,21 @@ func TestMessage(t *testing.T) {
 	t.Run("happy path persists and pubs raw content; ParseData round-trips", func(t *testing.T) {
 		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				if err := assertCalledWithError("GameID", gameID, id); err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", gameID, id)
 				return model.GameTurn{ID: turnID}, nil
 			},
 			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
-				if err := assertCalledWithError("GameID", gameID, g); err != nil {
-					t.Error(err)
-				}
-				if err := assertCalledWithError("TurnID", turnID, turn); err != nil {
-					t.Error(err)
-				}
-				if err := assertCalledWithError("UserID", userID, u); err != nil {
-					t.Error(err)
-				}
-				if err := assertCalledWithError("Content", "hello", content); err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", gameID, g)
+				assertCalledWith(t, "TurnID", turnID, turn)
+				assertCalledWith(t, "UserID", userID, u)
+				assertCalledWith(t, "Content", "hello", content)
 				return model.Message{ID: "m-1"}, nil
 			},
 		}
 		pubCh := make(chan service.GameNotification, 1)
 		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) {
-			if err := assertCalledWithError("GameID", gameID, g); err != nil {
-				t.Error(err)
-			}
-			if err := assertCalledWithError("UserID", userID, u); err != nil {
-				t.Error(err)
-			}
+			assertCalledWith(t, "GameID", gameID, g)
+			assertCalledWith(t, "UserID", userID, u)
 			pubCh <- n
 		}}
 		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
@@ -1613,9 +1514,7 @@ func TestGameWord(t *testing.T) {
 	wordRepoFor := func(w model.Word) *repotest.MockWordRepository {
 		return &repotest.MockWordRepository{
 			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
-				if err := assertCalledWithError("WordID", wordID, id); err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "WordID", wordID, id)
 				return w, nil
 			},
 		}
@@ -1797,9 +1696,7 @@ func TestOnTurnEnd(t *testing.T) {
 		}
 		mgn := &servicetest.MockGameNotifier{
 			PubAllMock: func(g string, n service.GameNotification) {
-				if err := assertCalledWithError("GameID", gameID, g); err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", gameID, g)
 				if n.GetType() != "turnended" {
 					t.Errorf("PubAll notif type: got %q, want turnended", n.GetType())
 				}

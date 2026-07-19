@@ -40,23 +40,13 @@ func TestJoinGame(t *testing.T) {
 		}
 		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
-				err := assertCalledWithError("GameID", "some-game-id", id)
-				if err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", "some-game-id", id)
 
 				return []model.Player{{ID: "other-player", Nickname: "OtherPlayer"}}, nil
 			},
 			AddPlayerMock: func(ctx context.Context, id, playerID string) error {
-				err := assertCalledWithError("GameID", "some-game-id", id)
-				if err != nil {
-					t.Error(err)
-				}
-
-				err = assertCalledWithError("PlayerID", "new-player-id", playerID)
-				if err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", "some-game-id", id)
+				assertCalledWith(t, "PlayerID", "new-player-id", playerID)
 
 				return nil
 			},
@@ -64,25 +54,15 @@ func TestJoinGame(t *testing.T) {
 		pubCh := make(chan int)
 		mgns := &servicetest.MockGameNotifier{
 			PubMock: func(gameID, userID string, notif service.GameNotification) {
+				// Assert before signalling: the signal unblocks the test, so
+				// asserting after it could race test completion (t.Error in a
+				// finished test panics).
+				assertCalledWith(t, "GameID", "some-game-id", gameID)
+				assertCalledWith(t, "PlayerID", "new-player-id", userID)
+				assertCalledWith(t, "NotifType", "join", notif.GetType())
+				assertCalledWith(t, "NotifData", "new-player-id,NewPlayer", notif.GetData())
+
 				pubCh <- 0
-				err := assertCalledWithError("GameID", "some-game-id", gameID)
-				if err != nil {
-					t.Error(err)
-				}
-
-				err = assertCalledWithError("PlayerID", "new-player-id", userID)
-				if err != nil {
-					t.Error(err)
-				}
-
-				err = assertCalledWithError("NotifType", "join", notif.GetType())
-				if err != nil {
-					t.Error(err)
-				}
-				err = assertCalledWithError("NotifData", "new-player-id,NewPlayer", notif.GetData())
-				if err != nil {
-					t.Error(err)
-				}
 			},
 		}
 

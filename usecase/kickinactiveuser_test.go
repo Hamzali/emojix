@@ -26,24 +26,10 @@ func TestKickInactiveUser(t *testing.T) {
 		mgn := &servicetest.MockGameNotifier{
 			SubsMock: subsMock,
 			PubMock: func(gameID, userID string, notif service.GameNotification) {
-				err := assertCalledWithError("GameID", "game-id", gameID)
-				if err != nil {
-					t.Error(err)
-				}
-				err = assertCalledWithError("UserID", "user-4", userID)
-				if err != nil {
-					t.Error(err)
-				}
-
-				notifType := notif.GetType()
-				if notifType != "left" {
-					t.Error(err)
-				}
-
-				notifData := notif.GetData()
-				if notifData != "user-4" {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", "game-id", gameID)
+				assertCalledWith(t, "UserID", "user-4", userID)
+				assertCalledWith(t, "NotifType", "left", notif.GetType())
+				assertCalledWith(t, "NotifData", "user-4", notif.GetData())
 
 				pubCh <- 1
 				close(pubCh)
@@ -52,18 +38,9 @@ func TestKickInactiveUser(t *testing.T) {
 
 		mgr := &repotest.MockGameRepository{
 			SetPlayerStateMock: func(ctx context.Context, gameID, userID, state model.PlayerState) error {
-				err := assertCalledWithError("GameID", "game-id", gameID)
-				if err != nil {
-					t.Error(err)
-				}
-				err = assertCalledWithError("UserID", "user-4", userID)
-				if err != nil {
-					t.Error(err)
-				}
-				err = assertCalledWithError("State", "inactive", state)
-				if err != nil {
-					t.Error(err)
-				}
+				assertCalledWith(t, "GameID", "game-id", gameID)
+				assertCalledWith(t, "UserID", "user-4", userID)
+				assertCalledWith(t, "State", "inactive", state)
 				return nil
 			},
 		}
