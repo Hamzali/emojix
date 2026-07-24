@@ -79,7 +79,13 @@ type Session struct {
 
 func (e *webServer) getSession(w http.ResponseWriter, r *http.Request) (Session, error) {
 	redirectToInit := func() {
-		toUrl := fmt.Sprintf("/init?from=%s", r.URL.Path)
+		// POST/non-GET targets are not safe to replay after /init (which always
+		// finishes with a GET redirect), so fall back to home in that case.
+		from := r.URL.Path
+		if r.Method != http.MethodGet && r.Method != http.MethodHead {
+			from = "/"
+		}
+		toUrl := fmt.Sprintf("/init?from=%s", from)
 		http.Redirect(w, r, toUrl, http.StatusFound)
 	}
 
@@ -90,6 +96,14 @@ func (e *webServer) getSession(w http.ResponseWriter, r *http.Request) (Session,
 	}
 
 	nicknameCookie, err := r.Cookie(nicknameCookieKey)
+	if err != nil {
+		redirectToInit()
+		return Session{}, err
+	}
+
+	// Cookies can outlive the DB (common when resetting local state). If the
+	// user row is gone, force a fresh /init instead of failing later with an FK error.
+	_, err = e.emojixUsecase.GetUser(r.Context(), userIdCookie.Value)
 	if err != nil {
 		redirectToInit()
 		return Session{}, err
@@ -113,17 +127,25 @@ func setCookie(key string, value string) string {
 }
 
 func (e *webServer) InitSession(w http.ResponseWriter, r *http.Request) {
-	// TODO: check if there is already a user
-	user, err := e.emojixUsecase.InitUser(r.Context())
-
-	if err != nil {
-		e.handleError(w, err, "failed to init user")
-		return
-	}
-
 	fromUrl := r.URL.Query().Get("from")
 	if fromUrl == "" {
 		fromUrl = "/"
+	}
+
+	// Reuse a still-valid session instead of minting a new user every visit.
+	if userIDCookie, err := r.Cookie(userIdCookieKey); err == nil {
+		if _, err := r.Cookie(nicknameCookieKey); err == nil {
+			if _, err := e.emojixUsecase.GetUser(r.Context(), userIDCookie.Value); err == nil {
+				http.Redirect(w, r, fromUrl, http.StatusFound)
+				return
+			}
+		}
+	}
+
+	user, err := e.emojixUsecase.InitUser(r.Context())
+	if err != nil {
+		e.handleError(w, err, "failed to init user")
+		return
 	}
 
 	w.Header().Add("Set-Cookie", setCookie(userIdCookieKey, user.ID))
