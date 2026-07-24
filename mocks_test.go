@@ -24,6 +24,10 @@ type MockEmojixUsecase struct {
 	InitUserCalls   int
 	InitUserLastCtx context.Context
 
+	GetUserFn         func(ctx context.Context, userID string) (model.User, error)
+	GetUserCalls      int
+	GetUserLastUserID string
+
 	InitGameFn         func(ctx context.Context, userID string) (model.Game, error)
 	InitGameCalls      int
 	InitGameLastUserID string
@@ -77,6 +81,10 @@ func newMockUsecase() *MockEmojixUsecase {
 	m.InitUserFn = func(ctx context.Context) (model.User, error) {
 		return model.User{}, nil
 	}
+	m.GetUserFn = func(ctx context.Context, userID string) (model.User, error) {
+		// Default: session user exists so existing handler tests keep working.
+		return model.User{ID: userID}, nil
+	}
 	m.InitGameFn = func(ctx context.Context, userID string) (model.Game, error) {
 		return model.Game{}, nil
 	}
@@ -113,6 +121,14 @@ func (m *MockEmojixUsecase) InitUser(ctx context.Context) (model.User, error) {
 	m.InitUserLastCtx = ctx
 	m.mu.Unlock()
 	return m.InitUserFn(ctx)
+}
+
+func (m *MockEmojixUsecase) GetUser(ctx context.Context, userID string) (model.User, error) {
+	m.mu.Lock()
+	m.GetUserCalls++
+	m.GetUserLastUserID = userID
+	m.mu.Unlock()
+	return m.GetUserFn(ctx, userID)
 }
 
 func (m *MockEmojixUsecase) InitGame(ctx context.Context, userID string) (model.Game, error) {

@@ -2,6 +2,7 @@ package usecase_test
 
 import (
 	"context"
+	"database/sql"
 	"emojix/model"
 	"emojix/repository"
 	"emojix/repository/repotest"
@@ -815,6 +816,56 @@ func TestInitUser(t *testing.T) {
 		_, err := uc.InitUser(context.Background())
 		if err == nil {
 			t.Fatal("expected error from CreateOrUpdate")
+		}
+	})
+}
+
+func TestGetUser(t *testing.T) {
+	t.Run("returns user when found", func(t *testing.T) {
+		want := model.User{ID: "user-1", Nickname: "SillyCat"}
+		mur := &repotest.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				assertCalledWith(t, "ID", "user-1", id)
+				return want, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(mur, nil, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
+
+		got, err := uc.GetUser(context.Background(), "user-1")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if got.ID != want.ID || got.Nickname != want.Nickname {
+			t.Errorf("got %+v, want %+v", got, want)
+		}
+	})
+
+	t.Run("maps sql.ErrNoRows to ErrUserNotFound", func(t *testing.T) {
+		mur := &repotest.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{}, sql.ErrNoRows
+			},
+		}
+		uc := usecase.NewEmojixUsecase(mur, nil, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
+
+		_, err := uc.GetUser(context.Background(), "missing")
+		if !errors.Is(err, usecase.ErrUserNotFound) {
+			t.Fatalf("got %v, want ErrUserNotFound", err)
+		}
+	})
+
+	t.Run("propagates other find errors", func(t *testing.T) {
+		wantErr := errors.New("db down")
+		mur := &repotest.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{}, wantErr
+			},
+		}
+		uc := usecase.NewEmojixUsecase(mur, nil, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
+
+		_, err := uc.GetUser(context.Background(), "user-1")
+		if !errors.Is(err, wantErr) {
+			t.Fatalf("got %v, want %v", err, wantErr)
 		}
 	})
 }

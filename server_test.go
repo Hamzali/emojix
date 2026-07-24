@@ -85,6 +85,33 @@ func TestIndex_NoSession_RedirectsToInit(t *testing.T) {
 	}
 }
 
+func TestIndex_StaleUser_RedirectsToInit(t *testing.T) {
+	uc := newMockUsecase()
+	uc.GetUserFn = func(ctx context.Context, userID string) (model.User, error) {
+		return model.User{}, usecase.ErrUserNotFound
+	}
+	view := &MockView{}
+	srv := newServer(uc, view)
+
+	r := withSession(newReq("GET", "/", nil), "ghost", "OldNick")
+	w := httptest.NewRecorder()
+
+	srv.Index(w, r)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/init?from=/" {
+		t.Errorf("Location = %q, want /init?from=/", loc)
+	}
+	if uc.GetUserCalls != 1 || uc.GetUserLastUserID != "ghost" {
+		t.Errorf("GetUser calls=%d id=%q", uc.GetUserCalls, uc.GetUserLastUserID)
+	}
+	if view.renderIndexPageCalls != 0 {
+		t.Errorf("renderIndexPageCalls = %d, want 0", view.renderIndexPageCalls)
+	}
+}
+
 func TestIndex_RenderError_500(t *testing.T) {
 	uc := newMockUsecase()
 	view := &MockView{}
@@ -139,6 +166,59 @@ func TestInitSession_SetsCookiesAndRedirects(t *testing.T) {
 	}
 	if cookies[1] != wantNick {
 		t.Errorf("Set-Cookie[1] = %q, want %q", cookies[1], wantNick)
+	}
+}
+
+func TestInitSession_ValidExistingSession_SkipsInitUser(t *testing.T) {
+	uc := newMockUsecase()
+	srv := newServer(uc, &MockView{})
+
+	r := withSession(newReq("GET", "/init?from=/game/x", nil), "u1", "nick")
+	w := httptest.NewRecorder()
+
+	srv.InitSession(w, r)
+
+	if uc.InitUserCalls != 0 {
+		t.Fatalf("InitUserCalls = %d, want 0", uc.InitUserCalls)
+	}
+	if uc.GetUserCalls != 1 || uc.GetUserLastUserID != "u1" {
+		t.Errorf("GetUser calls=%d id=%q", uc.GetUserCalls, uc.GetUserLastUserID)
+	}
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/game/x" {
+		t.Errorf("Location = %q, want /game/x", loc)
+	}
+	if cookies := w.Header()["Set-Cookie"]; len(cookies) != 0 {
+		t.Errorf("expected no Set-Cookie, got %v", cookies)
+	}
+}
+
+func TestInitSession_StaleSession_CreatesNewUser(t *testing.T) {
+	uc := newMockUsecase()
+	uc.GetUserFn = func(ctx context.Context, userID string) (model.User, error) {
+		return model.User{}, usecase.ErrUserNotFound
+	}
+	uc.InitUserFn = func(ctx context.Context) (model.User, error) {
+		return model.User{ID: "fresh", Nickname: "NewNick"}, nil
+	}
+	srv := newServer(uc, &MockView{})
+
+	r := withSession(newReq("GET", "/init?from=/", nil), "ghost", "OldNick")
+	w := httptest.NewRecorder()
+
+	srv.InitSession(w, r)
+
+	if uc.InitUserCalls != 1 {
+		t.Fatalf("InitUserCalls = %d, want 1", uc.InitUserCalls)
+	}
+	cookies := w.Header()["Set-Cookie"]
+	if len(cookies) != 2 {
+		t.Fatalf("Set-Cookie entries = %d, want 2: %v", len(cookies), cookies)
+	}
+	if cookies[0] != "userid=fresh; Path=/; HttpOnly" {
+		t.Errorf("Set-Cookie[0] = %q", cookies[0])
 	}
 }
 
@@ -341,8 +421,37 @@ func TestNewGame_NoSession_Redirects(t *testing.T) {
 	if w.Code != http.StatusFound {
 		t.Fatalf("status = %d, want 302", w.Code)
 	}
+	if loc := w.Header().Get("Location"); loc != "/init?from=/" {
+		t.Errorf("Location = %q, want /init?from=/ (POST must not replay)", loc)
+	}
 	if uc.InitGameCalls != 0 {
 		t.Errorf("InitGameCalls = %d, want 0", uc.InitGameCalls)
+	}
+}
+
+func TestNewGame_StaleUser_RedirectsToInit(t *testing.T) {
+	uc := newMockUsecase()
+	uc.GetUserFn = func(ctx context.Context, userID string) (model.User, error) {
+		return model.User{}, usecase.ErrUserNotFound
+	}
+	srv := newServer(uc, &MockView{})
+
+	r := withSession(newReq("POST", "/game/new", nil), "ghost", "OldNick")
+	w := httptest.NewRecorder()
+
+	srv.NewGame(w, r)
+
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/init?from=/" {
+		t.Errorf("Location = %q, want /init?from=/", loc)
+	}
+	if uc.InitGameCalls != 0 {
+		t.Errorf("InitGameCalls = %d, want 0", uc.InitGameCalls)
+	}
+	if uc.GetUserLastUserID != "ghost" {
+		t.Errorf("GetUserLastUserID = %q, want ghost", uc.GetUserLastUserID)
 	}
 }
 

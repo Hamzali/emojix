@@ -3,6 +3,7 @@ package usecase
 import (
 	"context"
 	"crypto/rand"
+	"database/sql"
 	"emojix/model"
 	"emojix/repository"
 	"emojix/service"
@@ -18,8 +19,14 @@ import (
 )
 
 type GameUpdateHandler = func(notifType string, data string) error
+
+// ErrUserNotFound is returned when a user id is not present in the store
+// (e.g. stale cookie after a DB reset).
+var ErrUserNotFound = errors.New("user not found")
+
 type EmojixUsecase interface {
 	InitUser(ctx context.Context) (model.User, error)
+	GetUser(ctx context.Context, userID string) (model.User, error)
 	InitGame(ctx context.Context, userID string) (model.Game, error)
 	JoinGame(ctx context.Context, gameID string, userID string) error
 	Guess(ctx context.Context, gameID string, userID string, word string) error
@@ -276,6 +283,17 @@ func (e *emojixUsecase) InitUser(ctx context.Context) (model.User, error) {
 	}
 
 	return model.User{ID: userID, Nickname: nickname}, nil
+}
+
+func (e *emojixUsecase) GetUser(ctx context.Context, userID string) (model.User, error) {
+	user, err := e.userRepo.FindByID(ctx, userID)
+	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return model.User{}, ErrUserNotFound
+		}
+		return model.User{}, err
+	}
+	return user, nil
 }
 
 func pickGameWord(allWords []model.Word) model.Word {
