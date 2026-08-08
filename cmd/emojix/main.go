@@ -16,8 +16,6 @@ func main() {
 		err = serve(os.Args[2:])
 	case "migrate":
 		err = migrate(os.Args[2:])
-	case "test":
-		err = runTest()
 	case "dev":
 		err = dev(os.Args[2:])
 	case "help", "-h", "--help":
@@ -39,7 +37,6 @@ func usage() {
 commands:
   serve              start the game server
   migrate <action>   db: up | reset | seed | fresh | create <name>
-  test               gofmt + go vet + go test -race -cover
   dev                serve with auto-reload on .go/.gohtml changes
 
 flags (serve, migrate, dev):

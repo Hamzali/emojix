@@ -13,7 +13,9 @@ go run ./cmd/emojix dev             # serve + reload on .go/.gohtml changes
 ## Test
 
 ```bash
-go run ./cmd/emojix test
+gofmt -l .
+go vet ./...
+go test -race -cover ./...
 ```
 
 ## Migrate
