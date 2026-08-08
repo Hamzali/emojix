@@ -5,21 +5,27 @@ Multiplayer emoji charades. Tell a word with emojis, others guess.
 ## Run
 
 ```bash
-script/reset-db.sh emojix.db   # migrate + seed
-script/run.sh                  # http://localhost:9000
-```
-
-Dev auto-reload (needs [entr](https://eradman.com/entrproject/)):
-
-```bash
-script/run-dev.sh
+go run ./cmd/emojix migrate fresh   # reset + up + seed
+go run ./cmd/emojix serve           # http://localhost:9000
+go run ./cmd/emojix dev             # serve + reload on .go/.gohtml changes
 ```
 
 ## Test
 
 ```bash
-script/test.sh
+go run ./cmd/emojix test
 ```
+
+## Migrate
+
+```bash
+go run ./cmd/emojix migrate up
+go run ./cmd/emojix migrate create add_something
+go run ./cmd/emojix migrate seed
+go run ./cmd/emojix migrate reset
+```
+
+All migrate/serve/dev commands accept `-db path` (default `emojix.db`).
 
 ## Stack
 

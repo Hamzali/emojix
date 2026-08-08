@@ -15,7 +15,7 @@ import (
 )
 
 // newE2EServer wires the REAL layers (sqlite DB, repositories, usecase, HTML
-// view) exactly like cmd/server/main.go, behind an httptest server.
+// view) exactly like cmd/emojix serve, behind an httptest server.
 //
 // A temp FILE database is used (not :memory:) because InitGame reads words
 // outside its transaction; with a single-connection in-memory DB that read

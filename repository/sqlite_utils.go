@@ -102,7 +102,7 @@ func (m *Migrator) readLocalMigrationFiles() ([]string, error) {
 // CreateCmd creates a new migration file named "<unix>_<name>.sql" in the migration
 // dir. The name is passed explicitly rather than read from os.Args so the method is
 // testable and free of hidden global-state dependencies; the CLI wrapper in
-// cmd/migrations passes the argument it parses from os.Args[2].
+// cmd/emojix migrate create passes the name argument.
 func (m *Migrator) CreateCmd(name string) error {
 	if name == "" {
 		return errors.New("invalid migration name")
