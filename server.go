@@ -13,10 +13,6 @@ import (
 	"time"
 )
 
-type EmojixServer interface {
-	Start()
-}
-
 type webServer struct {
 	view          View
 	emojixUsecase usecase.EmojixUsecase
@@ -26,12 +22,12 @@ type webServer struct {
 	kickDelay time.Duration
 }
 
-func NewWebServer(emojixUsecase usecase.EmojixUsecase, view View) (EmojixServer, error) {
+func NewWebServer(emojixUsecase usecase.EmojixUsecase, view View) *webServer {
 	return &webServer{
 		view:          view,
 		emojixUsecase: emojixUsecase,
 		kickDelay:     defaultKickDelay,
-	}, nil
+	}
 }
 
 // mux returns the router with every route registered. It is shared by Start
@@ -241,10 +237,6 @@ func (e *webServer) Game(w http.ResponseWriter, r *http.Request) {
 		e.handleError(w, err, "failed to render page")
 		return
 	}
-}
-
-type GameLoadingPageData struct {
-	GameID string
 }
 
 func (e *webServer) LoadingGame(w http.ResponseWriter, r *http.Request) {

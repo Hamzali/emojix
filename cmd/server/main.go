@@ -51,13 +51,5 @@ func main() {
 	)
 
 	view := emojix.NewHTMLView()
-
-	e, err := emojix.NewWebServer(emojixUsecase, view)
-
-	if err != nil {
-		log.Printf("failed to init err: %v", err)
-		return
-	}
-
-	e.Start()
+	emojix.NewWebServer(emojixUsecase, view).Start()
 }
