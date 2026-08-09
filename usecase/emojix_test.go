@@ -1013,9 +1013,9 @@ func TestGuess(t *testing.T) {
 			}, nil
 		}
 		mgr.GetScoresMock = func(ctx context.Context, id string) ([]model.Score, error) { return nil, nil }
-		var scoredPoint int
+		scoresByPlayer := map[string]int{}
 		mgr.AddScoreMock = func(ctx context.Context, g, u, msg, turn string, point int) error {
-			scoredPoint = point
+			scoresByPlayer[u] = point
 			return nil
 		}
 		mur := &repotest.MockUserRepository{
@@ -1031,10 +1031,13 @@ func TestGuess(t *testing.T) {
 		if err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
-		// 3 active players, no prior guesses → totalGuessers=1, coeff=3/1=3, point=10*3=30.
-		// NOTE: formula kept as-is per backlog (README drift). See TODO in emojix.go.
-		if scoredPoint != 30 {
-			t.Errorf("AddScore point: got %d, want 30", scoredPoint)
+		// 3 active guessers (teller-other not in players), no prior → totalGuessers=1, coeff=3/1=3, point=30.
+		// Teller gets a flat bonus per correct guess.
+		if scoresByPlayer[userID] != 30 {
+			t.Errorf("guesser points: got %d, want 30", scoresByPlayer[userID])
+		}
+		if scoresByPlayer["teller-other"] != 5 {
+			t.Errorf("teller points: got %d, want 5", scoresByPlayer["teller-other"])
 		}
 		if gl.EndGameTurnCalled {
 			t.Error("EndGameTurn must not be called when not everyone has guessed")

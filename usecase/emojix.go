@@ -593,6 +593,15 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 		return err
 	}
 
+	// Teller scores per correct guess (more solvers → more teller points over the turn).
+	const tellerPointsPerCorrectGuess = 5
+	if turn.TellerID != "" {
+		err = gameRepo.AddScore(ctx, gameID, turn.TellerID, msg.ID, turnID, tellerPointsPerCorrectGuess)
+		if err != nil {
+			return err
+		}
+	}
+
 	err = uow.Commit()
 	if err != nil {
 		return err
