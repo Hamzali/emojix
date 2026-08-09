@@ -3,23 +3,35 @@ package model
 import "time"
 
 type Game struct {
-	ID string
+	ID     string
+	ListID string
 
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
 
+type WordList struct {
+	ID    string
+	Title string
+}
+
 type Word struct {
-	ID   string
-	Word string
-	Hint string
+	ID     string
+	ListID string
+	Word   string
+	Hint   string
 }
 
 type GameTurn struct {
 	ID        string
 	GameID    string
-	WordID    string
+	WordID    string // empty until teller picks
+	TellerID  string
+	OptionA   string
+	OptionB   string
+	OptionC   string
 	CreatedAt time.Time
+	StartedAt time.Time // zero until teller picks
 }
 
 type Score struct {
@@ -81,6 +93,9 @@ type GameState struct {
 	TurnID        string
 	TurnStartedAt time.Time
 	TurnEnded     bool
+	AwaitingPick  bool
+	IsTeller      bool
+	WordOptions   []Word // teller-only, while AwaitingPick
 	Word          string
 	Hint          string
 	Messages      []GameStateMessage

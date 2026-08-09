@@ -27,8 +27,10 @@ var ErrUserNotFound = errors.New("user not found")
 type EmojixUsecase interface {
 	InitUser(ctx context.Context) (model.User, error)
 	GetUser(ctx context.Context, userID string) (model.User, error)
-	InitGame(ctx context.Context, userID string) (model.Game, error)
+	ListWordLists(ctx context.Context) ([]model.WordList, error)
+	InitGame(ctx context.Context, userID string, listID string) (model.Game, error)
 	JoinGame(ctx context.Context, gameID string, userID string) error
+	PickWord(ctx context.Context, gameID string, userID string, wordID string) error
 	Guess(ctx context.Context, gameID string, userID string, word string) error
 	Message(ctx context.Context, gameID string, userID string, word string) error
 	GameState(ctx context.Context, gameID string, userID string) (model.GameState, error)
@@ -129,6 +131,10 @@ const turnDuration = time.Second * 60
 // repository has no words to pick from.
 var ErrNoWords = errors.New("no words available to pick for a new turn")
 
+func (e *emojixUsecase) ListWordLists(ctx context.Context) ([]model.WordList, error) {
+	return e.wordRepo.GetLists(ctx)
+}
+
 func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUserID string) (model.GameState, error) {
 	gameState := model.GameState{}
 	players, err := e.gameRepo.GetPlayers(ctx, gameID)
@@ -157,19 +163,33 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 		return gameState, err
 	}
 
+	gameState.TurnID = latestTurn.ID
+	gameState.GameID = gameID
+	gameState.CurrentUserID = currentUserID
+	gameState.IsTeller = latestTurn.TellerID == currentUserID
+	gameState.AwaitingPick = latestTurn.WordID == ""
+
+	leaderboard := e.buildLeaderboard(currentUserID, latestTurn.ID, latestTurn.TellerID, scores, activePlayers)
+	gameState.Leaderboard = leaderboard
+
+	if gameState.AwaitingPick {
+		if gameState.IsTeller {
+			opts, err := e.loadWordOptions(ctx, latestTurn)
+			if err != nil {
+				return gameState, err
+			}
+			gameState.WordOptions = opts
+		}
+		return gameState, nil
+	}
+
 	word, err := e.wordRepo.FindByID(ctx, latestTurn.WordID)
 	if err != nil {
 		return gameState, err
 	}
 
 	gameState.Hint = word.Hint
-	gameState.TurnID = latestTurn.ID
-	gameState.TurnStartedAt = latestTurn.CreatedAt
-	gameState.GameID = gameID
-	gameState.CurrentUserID = currentUserID
-
-	leaderboard := e.buildLeaderboard(currentUserID, latestTurn.ID, scores, activePlayers)
-	gameState.Leaderboard = leaderboard
+	gameState.TurnStartedAt = latestTurn.StartedAt
 
 	// check if turn ended and decide to mask word or not
 	leaderboardEntryMap := map[string]model.LeaderboardEntry{}
@@ -182,19 +202,29 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 
 		leaderboardEntryMap[entry.PlayerID] = entry
 
+		// Teller already knows the word; they don't need to guess.
+		if entry.PlayerID == latestTurn.TellerID {
+			continue
+		}
 		if !entry.GuessedWord {
 			allGuessed = false
 		}
 	}
+	// Solo teller (no guessers): turn is not "all guessed".
+	if e.countGuessers(activePlayers, latestTurn.TellerID) == 0 {
+		allGuessed = false
+	}
+
 	wordMaskRegex := regexp.MustCompile(`\w`)
 	gameWord := word.Word
-	if !currPlayerEntry.GuessedWord {
+	// Teller always sees the real word; others only after guessing.
+	if !gameState.IsTeller && !currPlayerEntry.GuessedWord {
 		gameWord = wordMaskRegex.ReplaceAllString(gameWord, "*")
 	}
 
 	turnEndTime := gameState.TurnStartedAt.Add(turnDuration)
 	now := e.clock.Now()
-	turnTimedOut := now.After(turnEndTime)
+	turnTimedOut := !latestTurn.StartedAt.IsZero() && now.After(turnEndTime)
 
 	gameState.TurnEnded = allGuessed || turnTimedOut
 	gameState.Word = gameWord
@@ -210,7 +240,8 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 			Nickname: le.Nickname,
 		}
 
-		gm.Content = maskContent(gm.Content, word.Word, currPlayerEntry.GuessedWord)
+		seen := currPlayerEntry.GuessedWord || gameState.IsTeller
+		gm.Content = maskContent(gm.Content, word.Word, seen)
 
 		gameMessages = append(gameMessages, gm)
 	}
@@ -220,6 +251,32 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 
 	return gameState, nil
 
+}
+
+func (e *emojixUsecase) loadWordOptions(ctx context.Context, turn model.GameTurn) ([]model.Word, error) {
+	ids := []string{turn.OptionA, turn.OptionB, turn.OptionC}
+	opts := make([]model.Word, 0, 3)
+	for _, id := range ids {
+		if id == "" {
+			continue
+		}
+		w, err := e.wordRepo.FindByID(ctx, id)
+		if err != nil {
+			return nil, err
+		}
+		opts = append(opts, w)
+	}
+	return opts, nil
+}
+
+func (e *emojixUsecase) countGuessers(players []model.Player, tellerID string) int {
+	n := 0
+	for _, p := range players {
+		if p.ID != tellerID {
+			n++
+		}
+	}
+	return n
 }
 
 // generateRandomID generates a secure random session ID
@@ -296,14 +353,20 @@ func (e *emojixUsecase) GetUser(ctx context.Context, userID string) (model.User,
 	return user, nil
 }
 
-func pickGameWord(allWords []model.Word) model.Word {
-	wordsLength := len(allWords)
-	randWordIndex := mathRand.Intn(wordsLength)
-	pickedWord := allWords[randWordIndex]
-	return pickedWord
+func pickWordOptions(unused []model.Word, n int) []model.Word {
+	if n > len(unused) {
+		n = len(unused)
+	}
+	// Fisher-Yates partial shuffle for n picks.
+	shuffled := slices.Clone(unused)
+	for i := 0; i < n; i++ {
+		j := i + mathRand.Intn(len(shuffled)-i)
+		shuffled[i], shuffled[j] = shuffled[j], shuffled[i]
+	}
+	return shuffled[:n]
 }
 
-func (e *emojixUsecase) InitGame(ctx context.Context, userID string) (model.Game, error) {
+func (e *emojixUsecase) InitGame(ctx context.Context, userID string, listID string) (model.Game, error) {
 	uow, err := e.unitOfWorkFactory.New(ctx)
 	if err != nil {
 		return model.Game{}, err
@@ -312,7 +375,7 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string) (model.Game
 
 	gameRepo := uow.GameRepository()
 
-	game, err := gameRepo.Create(ctx)
+	game, err := gameRepo.Create(ctx, listID)
 	if err != nil {
 		return model.Game{}, err
 	}
@@ -322,7 +385,7 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string) (model.Game
 		return model.Game{}, err
 	}
 
-	err = e.newGameTurn(ctx, gameRepo, game.ID)
+	err = e.newGameTurn(ctx, gameRepo, game.ID, listID)
 	if err != nil {
 		return model.Game{}, err
 	}
@@ -331,10 +394,50 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string) (model.Game
 		return model.Game{}, err
 	}
 
-	// Start the game loop AFTER commit so the first turn is persisted
+	// Start the game loop AFTER commit. Timer waits for BeginTurn (teller pick).
 	e.gameLoop.Start(context.Background(), game.ID, turnDuration)
 
 	return game, nil
+}
+
+var (
+	ErrNotTeller     = errors.New("only the teller can pick the word")
+	ErrAlreadyPicked = errors.New("word already picked for this turn")
+	ErrInvalidOption = errors.New("word is not one of the turn options")
+)
+
+type WordPickedNotification struct{}
+
+func (n *WordPickedNotification) GetType() string { return "wordpicked" }
+func (n *WordPickedNotification) GetData() string { return "" }
+
+type NewTurnNotification struct{}
+
+func (n *NewTurnNotification) GetType() string { return "newturn" }
+func (n *NewTurnNotification) GetData() string { return "" }
+
+func (e *emojixUsecase) PickWord(ctx context.Context, gameID, userID, wordID string) error {
+	turn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
+	if err != nil {
+		return err
+	}
+	if turn.WordID != "" {
+		return ErrAlreadyPicked
+	}
+	if turn.TellerID != userID {
+		return ErrNotTeller
+	}
+	if wordID != turn.OptionA && wordID != turn.OptionB && wordID != turn.OptionC {
+		return ErrInvalidOption
+	}
+
+	if err := e.gameRepo.SetTurnWord(ctx, turn.ID, wordID); err != nil {
+		return err
+	}
+
+	e.gameLoop.BeginTurn(gameID)
+	go e.gameNotifier.PubAll(gameID, &WordPickedNotification{})
+	return nil
 }
 
 type GameMsgNotification struct {
@@ -399,6 +502,13 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 	turn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
 	if err != nil {
 		return err
+	}
+	if turn.WordID == "" {
+		return errors.New("turn has not started yet")
+	}
+	// Teller already knows the word; ignore their guesses.
+	if turn.TellerID == userID {
+		return errors.New("teller cannot guess")
 	}
 	turnID := turn.ID
 
@@ -465,9 +575,16 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 	}
 	totalGuessers := len(guessedPlayers) + 1
 
-	// Use active players only; inactive/Left players must not block turn end.
+	// Use active guessers only (exclude teller and inactive).
 	activePlayers := e.filterActivePlayers(players)
-	pointCoeff := len(activePlayers) / totalGuessers
+	guesserCount := e.countGuessers(activePlayers, turn.TellerID)
+	if guesserCount == 0 {
+		guesserCount = 1 // avoid div by zero; solo edge case
+	}
+	pointCoeff := guesserCount / totalGuessers
+	if pointCoeff < 1 {
+		pointCoeff = 1
+	}
 	basePoint := 10
 	point := basePoint * pointCoeff
 
@@ -484,7 +601,7 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, "***"})
 	go e.gameNotifier.Pub(gameID, userID, &GameCorrectGuessNotification{userID, currPlayer.Nickname})
 
-	if totalGuessers == len(activePlayers) {
+	if totalGuessers == e.countGuessers(activePlayers, turn.TellerID) {
 		e.gameLoop.EndGameTurn(gameID)
 	}
 
@@ -496,30 +613,67 @@ func (e *emojixUsecase) onTurnEnd(ctx context.Context, gameID string) {
 	e.gameNotifier.PubAll(gameID, &GameTurnEndNotification{})
 	<-e.clock.After(5 * time.Second)
 
-	err := e.newGameTurn(ctx, e.gameRepo, gameID)
+	game, err := e.gameRepo.FindByID(ctx, gameID)
+	if err != nil {
+		log.Printf("failed to load game for new turn: %v", err)
+		e.gameLoop.StopGame(gameID)
+		return
+	}
+
+	err = e.newGameTurn(ctx, e.gameRepo, gameID, game.ListID)
 	if err != nil {
 		log.Printf("failed to create new turn, retrying: %v", err)
 		<-e.clock.After(time.Second)
-		err = e.newGameTurn(ctx, e.gameRepo, gameID)
+		err = e.newGameTurn(ctx, e.gameRepo, gameID, game.ListID)
 	}
 	if err != nil {
 		log.Printf("failed to create new turn after retry, stopping game: %v", err)
 		e.gameLoop.StopGame(gameID)
+		return
 	}
+	e.gameNotifier.PubAll(gameID, &NewTurnNotification{})
 }
 
-func (e *emojixUsecase) newGameTurn(ctx context.Context, gr repository.GameRepository, gameID string) error {
-	allWords, err := e.wordRepo.GetAll(ctx)
+func (e *emojixUsecase) newGameTurn(ctx context.Context, gr repository.GameRepository, gameID, listID string) error {
+	unused, err := e.wordRepo.GetUnusedByList(ctx, listID, gameID)
 	if err != nil {
 		return err
 	}
-	if len(allWords) == 0 {
+	if len(unused) == 0 {
 		return ErrNoWords
 	}
 
-	pickedWord := pickGameWord(allWords)
+	options := pickWordOptions(unused, 3)
+	// Pad to 3 slots by repeating the last option when the list is nearly empty.
+	for len(options) < 3 {
+		options = append(options, options[len(options)-1])
+	}
 
-	_, err = gr.AddTurn(ctx, gameID, pickedWord.ID)
+	players, err := gr.GetPlayers(ctx, gameID)
+	if err != nil {
+		return err
+	}
+	active := e.filterActivePlayers(players)
+	if len(active) == 0 {
+		return errors.New("no active players")
+	}
+	// Stable teller rotation by join order.
+	slices.SortFunc(active, func(a, b model.Player) int {
+		return a.JoinedAt.Compare(b.JoinedAt)
+	})
+	turnCount, err := gr.CountTurns(ctx, gameID)
+	if err != nil {
+		return err
+	}
+	teller := active[turnCount%len(active)]
+
+	_, err = gr.AddTurn(ctx, repository.AddTurnParams{
+		GameID:   gameID,
+		TellerID: teller.ID,
+		OptionA:  options[0].ID,
+		OptionB:  options[1].ID,
+		OptionC:  options[2].ID,
+	})
 	return err
 }
 
@@ -544,9 +698,12 @@ func (e *emojixUsecase) Message(ctx context.Context, gameID string, userID strin
 	return nil
 }
 
-func (e *emojixUsecase) buildLeaderboard(currentUserID string, latestTurnID string, scores []model.Score, activePlayers []model.Player) []model.LeaderboardEntry {
+func (e *emojixUsecase) buildLeaderboard(currentUserID string, latestTurnID string, tellerID string, scores []model.Score, activePlayers []model.Player) []model.LeaderboardEntry {
 	leaderboardEntries := []model.LeaderboardEntry{}
 	isGuessedWord := func(playerID string) bool {
+		if playerID == tellerID {
+			return true // teller counts as "done" for display
+		}
 		for _, score := range scores {
 			if score.PlayerID == playerID && score.TurnID == latestTurnID {
 				return true
@@ -626,7 +783,7 @@ func (e *emojixUsecase) Leaderboard(ctx context.Context, gameID, currentUserID s
 		return leaderboardEntries, err
 	}
 
-	leaderboardEntries = e.buildLeaderboard(currentUserID, latestTurn.ID, scores, activePlayers)
+	leaderboardEntries = e.buildLeaderboard(currentUserID, latestTurn.ID, latestTurn.TellerID, scores, activePlayers)
 
 	return leaderboardEntries, nil
 }
@@ -636,10 +793,17 @@ func (e *emojixUsecase) GameWord(ctx context.Context, gameID, currentUserID stri
 	if err != nil {
 		return "", err
 	}
+	if latestTurn.WordID == "" {
+		return "", nil
+	}
 
 	word, err := e.wordRepo.FindByID(ctx, latestTurn.WordID)
 	if err != nil {
 		return "", err
+	}
+
+	if latestTurn.TellerID == currentUserID {
+		return word.Word, nil
 	}
 
 	scores, err := e.gameRepo.GetScores(ctx, gameID)

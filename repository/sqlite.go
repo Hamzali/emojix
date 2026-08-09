@@ -147,7 +147,7 @@ func NewGameRepository(db DBTX) GameRepository {
 
 func (r *sqliteGameRepository) FindByID(ctx context.Context, id string) (model.Game, error) {
 
-	row := r.db.QueryRowContext(ctx, "SELECT id, created_at, updated_at FROM games WHERE id = ?", id)
+	row := r.db.QueryRowContext(ctx, "SELECT id, list_id, created_at, updated_at FROM games WHERE id = ?", id)
 
 	err := row.Err()
 
@@ -158,13 +158,15 @@ func (r *sqliteGameRepository) FindByID(ctx context.Context, id string) (model.G
 	}
 
 	var createdAt, updatedAt int64
+	var listID sql.NullString
 
-	err = row.Scan(&game.ID, &createdAt, &updatedAt)
+	err = row.Scan(&game.ID, &listID, &createdAt, &updatedAt)
 
 	if err != nil {
 		return game, err
 	}
 
+	game.ListID = listID.String
 	game.CreatedAt = time.UnixMicro(createdAt)
 	game.UpdatedAt = time.UnixMicro(updatedAt)
 
@@ -185,7 +187,7 @@ func generateRandomID() (string, error) {
 	return hex.EncodeToString(bytes), nil
 }
 
-func (r *sqliteGameRepository) Create(ctx context.Context) (model.Game, error) {
+func (r *sqliteGameRepository) Create(ctx context.Context, listID string) (model.Game, error) {
 	id, err := generateRandomID()
 	if err != nil {
 		return model.Game{}, err
@@ -193,11 +195,12 @@ func (r *sqliteGameRepository) Create(ctx context.Context) (model.Game, error) {
 
 	game := model.Game{
 		ID:        id,
+		ListID:    listID,
 		UpdatedAt: time.Now(),
 		CreatedAt: time.Now(),
 	}
 
-	_, err = r.db.ExecContext(ctx, "INSERT INTO games (id, updated_at, created_at) VALUES (?, ?, ?)", game.ID, game.UpdatedAt.Unix(), game.CreatedAt.Unix())
+	_, err = r.db.ExecContext(ctx, "INSERT INTO games (id, list_id, updated_at, created_at) VALUES (?, ?, ?, ?)", game.ID, game.ListID, game.UpdatedAt.Unix(), game.CreatedAt.Unix())
 
 	if err != nil {
 		return model.Game{}, err
@@ -317,29 +320,37 @@ func (r *sqliteGameRepository) SendMessage(ctx context.Context, gameID string, t
 }
 
 func (r *sqliteGameRepository) GetLatestTurn(ctx context.Context, gameID string) (model.GameTurn, error) {
-	row := r.db.QueryRowContext(ctx, "SELECT id, word_id, created_at FROM game_turns WHERE game_id = ? ORDER BY created_at DESC LIMIT 1", gameID)
+	row := r.db.QueryRowContext(ctx, `
+		SELECT id, word_id, teller_id, option_a, option_b, option_c, created_at, started_at
+		FROM game_turns WHERE game_id = ? ORDER BY created_at DESC LIMIT 1`, gameID)
 
 	err := row.Err()
 
-	turn := model.GameTurn{}
+	turn := model.GameTurn{GameID: gameID}
 
 	if err != nil {
 		return turn, err
 	}
 
 	var createdAt int64
-	err = row.Scan(&turn.ID, &turn.WordID, &createdAt)
+	var wordID sql.NullString
+	var startedAt sql.NullInt64
+	err = row.Scan(&turn.ID, &wordID, &turn.TellerID, &turn.OptionA, &turn.OptionB, &turn.OptionC, &createdAt, &startedAt)
 
 	if err != nil {
 		return turn, err
 	}
 
+	turn.WordID = wordID.String
 	turn.CreatedAt = time.UnixMicro(createdAt)
+	if startedAt.Valid {
+		turn.StartedAt = time.UnixMicro(startedAt.Int64)
+	}
 
 	return turn, nil
 }
 
-func (r *sqliteGameRepository) AddTurn(ctx context.Context, gameID string, wordID string) (model.GameTurn, error) {
+func (r *sqliteGameRepository) AddTurn(ctx context.Context, params AddTurnParams) (model.GameTurn, error) {
 	id, err := generateRandomID()
 	if err != nil {
 		return model.GameTurn{}, err
@@ -347,17 +358,40 @@ func (r *sqliteGameRepository) AddTurn(ctx context.Context, gameID string, wordI
 
 	turn := model.GameTurn{
 		ID:        id,
-		GameID:    gameID,
-		WordID:    wordID,
+		GameID:    params.GameID,
+		TellerID:  params.TellerID,
+		OptionA:   params.OptionA,
+		OptionB:   params.OptionB,
+		OptionC:   params.OptionC,
 		CreatedAt: time.Now(),
 	}
 
-	_, err = r.db.ExecContext(ctx, "INSERT INTO game_turns (id, game_id, word_id, created_at) VALUES (?, ?, ?, ?)", id, gameID, wordID, turn.CreatedAt.UnixMicro())
+	_, err = r.db.ExecContext(ctx,
+		`INSERT INTO game_turns (id, game_id, word_id, teller_id, option_a, option_b, option_c, created_at, started_at)
+		 VALUES (?, ?, NULL, ?, ?, ?, ?, ?, NULL)`,
+		id, params.GameID, params.TellerID, params.OptionA, params.OptionB, params.OptionC, turn.CreatedAt.UnixMicro(),
+	)
 	if err != nil {
 		return model.GameTurn{}, err
 	}
 
 	return turn, nil
+}
+
+func (r *sqliteGameRepository) SetTurnWord(ctx context.Context, turnID string, wordID string) error {
+	now := time.Now().UnixMicro()
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE game_turns SET word_id = ?, started_at = ? WHERE id = ? AND word_id IS NULL`,
+		wordID, now, turnID,
+	)
+	return err
+}
+
+func (r *sqliteGameRepository) CountTurns(ctx context.Context, gameID string) (int, error) {
+	row := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM game_turns WHERE game_id = ?`, gameID)
+	var n int
+	err := row.Scan(&n)
+	return n, err
 }
 
 func (r *sqliteGameRepository) GetScores(ctx context.Context, gameID string) ([]model.Score, error) {
@@ -409,12 +443,33 @@ func NewWordRepository(db DBTX) WordRepository {
 	return &sqliteWordRepository{db}
 }
 
-func (r *sqliteWordRepository) GetAll(ctx context.Context) ([]model.Word, error) {
+func (r *sqliteWordRepository) GetLists(ctx context.Context) ([]model.WordList, error) {
+	rows, err := r.db.QueryContext(ctx, `SELECT id, title FROM word_lists ORDER BY title`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	lists := []model.WordList{}
+	for rows.Next() {
+		var list model.WordList
+		if err = rows.Scan(&list.ID, &list.Title); err != nil {
+			return nil, err
+		}
+		lists = append(lists, list)
+	}
+	return lists, rows.Err()
+}
+
+func (r *sqliteWordRepository) GetUnusedByList(ctx context.Context, listID, gameID string) ([]model.Word, error) {
 	rows, err := r.db.QueryContext(ctx, `
-		SELECT w.id, w.word, w.hint
+		SELECT w.id, w.list_id, w.word, w.hint
 		FROM words w
-		LIMIT 100;
-	`)
+		WHERE w.list_id = ?
+		  AND w.id NOT IN (
+		    SELECT word_id FROM game_turns
+		    WHERE game_id = ? AND word_id IS NOT NULL
+		  )`, listID, gameID)
 	if err != nil {
 		return nil, err
 	}
@@ -423,10 +478,12 @@ func (r *sqliteWordRepository) GetAll(ctx context.Context) ([]model.Word, error)
 	words := []model.Word{}
 	for rows.Next() {
 		var word model.Word
-		err = rows.Scan(&word.ID, &word.Word, &word.Hint)
+		var lid sql.NullString
+		err = rows.Scan(&word.ID, &lid, &word.Word, &word.Hint)
 		if err != nil {
 			return nil, err
 		}
+		word.ListID = lid.String
 		words = append(words, word)
 	}
 
@@ -438,7 +495,7 @@ func (r *sqliteWordRepository) GetAll(ctx context.Context) ([]model.Word, error)
 }
 
 func (r *sqliteWordRepository) FindByID(ctx context.Context, id string) (model.Word, error) {
-	row := r.db.QueryRowContext(ctx, "SELECT id, word, hint FROM words WHERE id = ?", id)
+	row := r.db.QueryRowContext(ctx, "SELECT id, list_id, word, hint FROM words WHERE id = ?", id)
 
 	err := row.Err()
 
@@ -448,10 +505,12 @@ func (r *sqliteWordRepository) FindByID(ctx context.Context, id string) (model.W
 		return word, err
 	}
 
-	err = row.Scan(&word.ID, &word.Word, &word.Hint)
+	var listID sql.NullString
+	err = row.Scan(&word.ID, &listID, &word.Word, &word.Hint)
 	if err != nil {
 		return word, err
 	}
+	word.ListID = listID.String
 
 	return word, nil
 }

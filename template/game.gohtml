@@ -30,6 +30,24 @@
     <div class="main">
       <div class="window word-panel">
         <div class="window-content">
+          {{ if .AwaitingPick }}
+            {{ if .IsTeller }}
+              <p class="pick-prompt">Pick a word to tell:</p>
+              <div class="word-options">
+                {{ range .WordOptions }}
+                  <form method="post" action="/game/{{ $.GameID }}/pick">
+                    <input type="hidden" name="word-id" value="{{ .ID }}" />
+                    <button type="submit" class="word-option">
+                      <span class="word-option-text">{{ .Word }}</span>
+                      <span class="word-option-hint">{{ .Hint }}</span>
+                    </button>
+                  </form>
+                {{ end }}
+              </div>
+            {{ else }}
+              <p class="pick-wait">Waiting for the teller to pick a word…</p>
+            {{ end }}
+          {{ else }}
           <div class="emoji-display">
             {{ .EmojiHint }}
           </div>
@@ -43,6 +61,7 @@
           >
             {{ template "game-word" . }}
           </div>
+          {{ if not .IsTeller }}
           <form
             class="guess-form"
             hx-post="/game/{{ .GameID }}/guess"
@@ -57,6 +76,10 @@
             ></textarea>
             <button type="submit">Guess!</button>
           </form>
+          {{ else }}
+            <p class="teller-note">You're the teller — others are guessing.</p>
+          {{ end }}
+          {{ end }}
         </div>
       </div>
 
@@ -93,6 +116,12 @@
     <div hx-trigger="sse:turnended" />
     <script>
       document.body.addEventListener("sse:turnended", (event) => {
+        location.reload();
+      });
+      document.body.addEventListener("sse:wordpicked", (event) => {
+        location.reload();
+      });
+      document.body.addEventListener("sse:newturn", (event) => {
         location.reload();
       });
 

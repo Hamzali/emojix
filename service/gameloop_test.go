@@ -19,6 +19,7 @@ func TestGameLoop_Timeout(t *testing.T) {
 	})
 
 	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.BeginTurn("g1")
 	fc.Advance(61 * time.Second)
 
 	select {
@@ -28,6 +29,25 @@ func TestGameLoop_Timeout(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("OnTurnEnd not called after timeout")
+	}
+}
+
+func TestGameLoop_NoTimerUntilBeginTurn(t *testing.T) {
+	fc := servicetest.NewFakeClock()
+	calls := make(chan string, 1)
+
+	gl := service.NewGameLoop(fc)
+	gl.SetOnTurnEndHandler(func(ctx context.Context, gameID string) {
+		calls <- gameID
+	})
+
+	gl.Start(context.Background(), "g1", 60*time.Second)
+	fc.Advance(120 * time.Second)
+
+	select {
+	case <-calls:
+		t.Fatal("OnTurnEnd fired before BeginTurn")
+	case <-time.After(20 * time.Millisecond):
 	}
 }
 
@@ -41,6 +61,7 @@ func TestGameLoop_EndGameTurn(t *testing.T) {
 	})
 
 	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.BeginTurn("g1")
 	gl.EndGameTurn("g1") // signal early
 
 	select {
@@ -63,6 +84,7 @@ func TestGameLoop_TimeoutBeforeAllGuessed(t *testing.T) {
 	})
 
 	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.BeginTurn("g1")
 	fc.Advance(30 * time.Second) // advance partway
 	gl.EndGameTurn("g1")         // all guessed
 	fc.Advance(31 * time.Second) // past original timeout
@@ -94,6 +116,7 @@ func TestGameLoop_DoubleEndGameTurn(t *testing.T) {
 	})
 
 	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.BeginTurn("g1")
 	gl.EndGameTurn("g1")
 	gl.EndGameTurn("g1") // second send should be dropped (buffered ch + default)
 
@@ -122,6 +145,7 @@ func TestGameLoop_StartDuplicateNoOp(t *testing.T) {
 
 	gl.Start(context.Background(), "g1", 60*time.Second)
 	gl.Start(context.Background(), "g1", 30*time.Second) // should be no-op, first Start still active
+	gl.BeginTurn("g1")
 
 	fc.Advance(31 * time.Second) // past 30s, but NOT past 60s
 	// OnTurnEnd should NOT fire yet
@@ -155,6 +179,7 @@ func TestGameLoop_AllGuessedAfterStop(t *testing.T) {
 
 	gl.Start(context.Background(), "g1", 60*time.Second)
 	gl.StopGame("g1")
+	gl.BeginTurn("g1")
 	gl.EndGameTurn("g1") // no-op, should not trigger callback
 
 	select {
@@ -174,6 +199,7 @@ func TestGameLoop_AllGuessedWrongGameID(t *testing.T) {
 	})
 
 	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.BeginTurn("g1")
 	gl.EndGameTurn("nonexistent") // wrong gameID, no-op
 
 	fc.Advance(61 * time.Second) // should still fire from timeout
@@ -222,14 +248,17 @@ func TestGameLoop_MultipleTurns(t *testing.T) {
 	gl.Start(context.Background(), "g1", 60*time.Second)
 
 	// Turn 1: end early
+	gl.BeginTurn("g1")
 	gl.EndGameTurn("g1")
 	<-calls
 
 	// Turn 2: let it timeout
+	gl.BeginTurn("g1")
 	fc.Advance(61 * time.Second)
 	<-calls
 
 	// Turn 3: end early again
+	gl.BeginTurn("g1")
 	gl.EndGameTurn("g1")
 	<-calls
 

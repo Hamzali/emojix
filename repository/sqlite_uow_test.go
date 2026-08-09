@@ -14,6 +14,7 @@ import (
 func TestUnitOfWork(t *testing.T) {
 	t.Run("Commit persists the created game", func(t *testing.T) {
 		db := newTestDB(t)
+		seedList(t, db, "list-1", "Test")
 		factory := NewUnitOfWorkFactory(db)
 
 		uow, err := factory.New(context.Background())
@@ -21,7 +22,7 @@ func TestUnitOfWork(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		game, err := uow.GameRepository().Create(context.Background())
+		game, err := uow.GameRepository().Create(context.Background(), "list-1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -46,6 +47,7 @@ func TestUnitOfWork(t *testing.T) {
 
 	t.Run("Rollback discards the created game", func(t *testing.T) {
 		db := newTestDB(t)
+		seedList(t, db, "list-1", "Test")
 		factory := NewUnitOfWorkFactory(db)
 
 		uow, err := factory.New(context.Background())
@@ -53,7 +55,7 @@ func TestUnitOfWork(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		game, err := uow.GameRepository().Create(context.Background())
+		game, err := uow.GameRepository().Create(context.Background(), "list-1")
 		if err != nil {
 			t.Fatal(err)
 		}

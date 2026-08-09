@@ -280,3 +280,27 @@
   width: 100%;
   transition: width 1s linear, background-color 1s ease;
 }
+
+.pick-prompt, .pick-wait, .teller-note {
+  text-align: center;
+  margin: var(--space-2) 0;
+}
+
+.word-options {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.word-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.25rem;
+  width: 100%;
+  padding: var(--space-2);
+}
+
+.word-option-hint {
+  font-size: 1.5rem;
+}

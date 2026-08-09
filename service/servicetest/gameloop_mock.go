@@ -13,6 +13,8 @@ type MockGameLoop struct {
 
 	StartMock                 func(ctx context.Context, gameID string, duration time.Duration)
 	StartCalled               bool
+	BeginTurnMock             func(gameID string)
+	BeginTurnCalled           bool
 	EndGameTurnMock           func(gameID string)
 	EndGameTurnCalled         bool
 	SetOnTurnEndHandlerMock   func(handler service.OnTurnEndHandler)
@@ -28,6 +30,13 @@ func (m *MockGameLoop) Start(ctx context.Context, gameID string, duration time.D
 	m.StartCalled = true
 	if m.StartMock != nil {
 		m.StartMock(ctx, gameID, duration)
+	}
+}
+
+func (m *MockGameLoop) BeginTurn(gameID string) {
+	m.BeginTurnCalled = true
+	if m.BeginTurnMock != nil {
+		m.BeginTurnMock(gameID)
 	}
 }
 

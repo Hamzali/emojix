@@ -44,6 +44,7 @@ func (e *webServer) mux() *http.ServeMux {
 	mux.HandleFunc("GET /game/{id}/word", e.GameWord)
 	mux.HandleFunc("POST /game/{id}/message", e.Message)
 	mux.HandleFunc("POST /game/{id}/guess", e.Guess)
+	mux.HandleFunc("POST /game/{id}/pick", e.PickWord)
 	mux.HandleFunc("GET /game/{id}/sse", e.Sse)
 	mux.HandleFunc("GET /init", e.InitSession)
 	mux.HandleFunc("GET /", e.Index)
@@ -157,7 +158,13 @@ func (e *webServer) Index(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	err = e.view.renderIndexPage(w, IndexPageViewParam{Title: "Emojix!", Nickname: session.Nickname})
+	lists, err := e.emojixUsecase.ListWordLists(r.Context())
+	if err != nil {
+		e.handleError(w, err, "failed to load word lists")
+		return
+	}
+
+	err = e.view.renderIndexPage(w, IndexPageViewParam{Title: "Emojix!", Nickname: session.Nickname, Lists: lists})
 	if err != nil {
 		e.handleError(w, err, "failed to render template")
 		return
@@ -193,7 +200,17 @@ func (e *webServer) NewGame(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx := r.Context()
 
-	game, err := e.emojixUsecase.InitGame(ctx, session.UserID)
+	if err := r.ParseForm(); err != nil {
+		e.handleError(w, err, "failed to parse form")
+		return
+	}
+	listID := r.PostForm.Get("list-id")
+	if listID == "" {
+		http.Error(w, "list-id required", http.StatusBadRequest)
+		return
+	}
+
+	game, err := e.emojixUsecase.InitGame(ctx, session.UserID, listID)
 	if err != nil {
 		e.handleError(w, err, "failed to create game")
 		return
@@ -231,6 +248,9 @@ func (e *webServer) Game(w http.ResponseWriter, r *http.Request) {
 		MaskedWord:    strings.Split(gameState.Word, ""),
 		EmojiHint:     gameState.Hint,
 		TurnStartedAt: gameState.TurnStartedAt,
+		AwaitingPick:  gameState.AwaitingPick,
+		IsTeller:      gameState.IsTeller,
+		WordOptions:   gameState.WordOptions,
 	}
 	err = e.view.renderGamePage(w, pageData)
 	if err != nil {
@@ -282,6 +302,24 @@ func (e *webServer) Message(w http.ResponseWriter, r *http.Request) {
 		e.handleError(w, err, "failed to render")
 		return
 	}
+}
+
+func (e *webServer) PickWord(w http.ResponseWriter, r *http.Request) {
+	session, err := e.getSession(w, r)
+	if err != nil {
+		return
+	}
+	gameID := r.PathValue("id")
+	if err := r.ParseForm(); err != nil {
+		e.handleError(w, err, "failed to parse form")
+		return
+	}
+	wordID := r.PostForm.Get("word-id")
+	if err := e.emojixUsecase.PickWord(r.Context(), gameID, session.UserID, wordID); err != nil {
+		e.handleError(w, err, "failed to pick word")
+		return
+	}
+	http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusSeeOther)
 }
 
 func (e *webServer) Guess(w http.ResponseWriter, r *http.Request) {

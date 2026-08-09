@@ -28,9 +28,19 @@ type MockEmojixUsecase struct {
 	GetUserCalls      int
 	GetUserLastUserID string
 
-	InitGameFn         func(ctx context.Context, userID string) (model.Game, error)
+	InitGameFn         func(ctx context.Context, userID string, listID string) (model.Game, error)
 	InitGameCalls      int
 	InitGameLastUserID string
+	InitGameLastListID string
+
+	ListWordListsFn    func(ctx context.Context) ([]model.WordList, error)
+	ListWordListsCalls int
+
+	PickWordFn         func(ctx context.Context, gameID, userID, wordID string) error
+	PickWordCalls      int
+	PickWordLastGameID string
+	PickWordLastUserID string
+	PickWordLastWordID string
 
 	JoinGameFn         func(ctx context.Context, gameID string, userID string) error
 	JoinGameCalls      int
@@ -85,8 +95,14 @@ func newMockUsecase() *MockEmojixUsecase {
 		// Default: session user exists so existing handler tests keep working.
 		return model.User{ID: userID}, nil
 	}
-	m.InitGameFn = func(ctx context.Context, userID string) (model.Game, error) {
+	m.InitGameFn = func(ctx context.Context, userID string, listID string) (model.Game, error) {
 		return model.Game{}, nil
+	}
+	m.ListWordListsFn = func(ctx context.Context) ([]model.WordList, error) {
+		return nil, nil
+	}
+	m.PickWordFn = func(ctx context.Context, gameID, userID, wordID string) error {
+		return nil
 	}
 	m.JoinGameFn = func(ctx context.Context, gameID, userID string) error {
 		return nil
@@ -131,12 +147,30 @@ func (m *MockEmojixUsecase) GetUser(ctx context.Context, userID string) (model.U
 	return m.GetUserFn(ctx, userID)
 }
 
-func (m *MockEmojixUsecase) InitGame(ctx context.Context, userID string) (model.Game, error) {
+func (m *MockEmojixUsecase) InitGame(ctx context.Context, userID string, listID string) (model.Game, error) {
 	m.mu.Lock()
 	m.InitGameCalls++
 	m.InitGameLastUserID = userID
+	m.InitGameLastListID = listID
 	m.mu.Unlock()
-	return m.InitGameFn(ctx, userID)
+	return m.InitGameFn(ctx, userID, listID)
+}
+
+func (m *MockEmojixUsecase) ListWordLists(ctx context.Context) ([]model.WordList, error) {
+	m.mu.Lock()
+	m.ListWordListsCalls++
+	m.mu.Unlock()
+	return m.ListWordListsFn(ctx)
+}
+
+func (m *MockEmojixUsecase) PickWord(ctx context.Context, gameID, userID, wordID string) error {
+	m.mu.Lock()
+	m.PickWordCalls++
+	m.PickWordLastGameID = gameID
+	m.PickWordLastUserID = userID
+	m.PickWordLastWordID = wordID
+	m.mu.Unlock()
+	return m.PickWordFn(ctx, gameID, userID, wordID)
 }
 
 func (m *MockEmojixUsecase) JoinGame(ctx context.Context, gameID string, userID string) error {

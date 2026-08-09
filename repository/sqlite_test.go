@@ -146,61 +146,95 @@ func TestUserRepository(t *testing.T) {
 	})
 }
 
+func seedList(t *testing.T, db *sql.DB, listID, title string) {
+	t.Helper()
+	_, err := db.Exec("INSERT INTO word_lists (id, title) VALUES (?, ?)", listID, title)
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestWordRepository(t *testing.T) {
-	t.Run("GetAll", func(t *testing.T) {
+	t.Run("GetLists", func(t *testing.T) {
 		db := newTestDB(t)
 		repo := NewWordRepository(db)
 
-		words, err := repo.GetAll(context.Background())
+		lists, err := repo.GetLists(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(lists) != 0 {
+			t.Errorf("expected 0 lists, got %d", len(lists))
+		}
+
+		seedList(t, db, "l1", "Action")
+		seedList(t, db, "l2", "Sci-Fi")
+
+		lists, err = repo.GetLists(context.Background())
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(lists) != 2 {
+			t.Fatalf("expected 2 lists, got %d", len(lists))
+		}
+		// ordered by title
+		if lists[0].Title != "Action" || lists[1].Title != "Sci-Fi" {
+			t.Errorf("unexpected order: %+v", lists)
+		}
+	})
+
+	t.Run("GetUnusedByList", func(t *testing.T) {
+		db := newTestDB(t)
+		repo := NewWordRepository(db)
+		seedList(t, db, "l1", "Action")
+
+		_, err := db.Exec(`INSERT INTO words (id, list_id, word, hint) VALUES
+			('1', 'l1', 'word-1', 'hint-1'),
+			('2', 'l1', 'word-2', 'hint-2'),
+			('3', 'l1', 'word-3', 'hint-3')`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = db.Exec("INSERT INTO games (id, list_id, created_at, updated_at) VALUES ('g1', 'l1', 1, 1)")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		if len(words) != 0 {
-			t.Errorf("expected 0 words but got %d", len(words))
+		words, err := repo.GetUnusedByList(context.Background(), "l1", "g1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(words) != 3 {
+			t.Fatalf("expected 3 unused, got %d", len(words))
 		}
 
-		_, err = db.Exec("INSERT INTO words (id, word, hint) VALUES ('1', 'word-1', 'hint-1'), ('2', 'word-2', 'hint-2');")
+		// mark word 1 as used
+		_, err = db.Exec(`INSERT INTO game_turns (id, game_id, word_id, teller_id, option_a, option_b, option_c, created_at, started_at)
+			VALUES ('t1', 'g1', '1', 'teller', '1', '2', '3', 1, 1)`)
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		words, err = repo.GetAll(context.Background())
+		words, err = repo.GetUnusedByList(context.Background(), "l1", "g1")
 		if err != nil {
 			t.Fatal(err)
 		}
 		if len(words) != 2 {
-			t.Errorf("expected 1 word but got %d", len(words))
+			t.Fatalf("expected 2 unused after play, got %d", len(words))
 		}
-
-		// first word
-		if words[0].ID != "1" {
-			t.Errorf("expected id %s but got %s", "1", words[0].ID)
-		}
-		if words[0].Word != "word-1" {
-			t.Errorf("expected word %s but got %s", "word-1", words[0].Word)
-		}
-		if words[0].Hint != "hint-1" {
-			t.Errorf("expected hint %s but got %s", "hint-1", words[0].Hint)
-		}
-
-		// second word
-		if words[1].ID != "2" {
-			t.Errorf("expected id %s but got %s", "2", words[1].ID)
-		}
-		if words[1].Word != "word-2" {
-			t.Errorf("expected word %s but got %s", "word-2", words[1].Word)
-		}
-		if words[1].Hint != "hint-2" {
-			t.Errorf("expected hint %s but got %s", "hint-3", words[1].Hint)
+		for _, w := range words {
+			if w.ID == "1" {
+				t.Error("used word still returned")
+			}
 		}
 	})
 
 	t.Run("FindByID", func(t *testing.T) {
 		db := newTestDB(t)
 		repo := NewWordRepository(db)
+		seedList(t, db, "l1", "Action")
 
-		_, err := db.Exec("INSERT INTO words (id, word, hint) VALUES ('1', 'word-1', 'hint-1');")
+		_, err := db.Exec("INSERT INTO words (id, list_id, word, hint) VALUES ('1', 'l1', 'word-1', 'hint-1');")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -212,6 +246,9 @@ func TestWordRepository(t *testing.T) {
 
 		if word.ID != "1" {
 			t.Errorf("expected id %s but got %s", "1", word.ID)
+		}
+		if word.ListID != "l1" {
+			t.Errorf("expected list_id l1 got %s", word.ListID)
 		}
 		if word.Word != "word-1" {
 			t.Errorf("expected word %s but got %s", "word-1", word.Word)
@@ -254,9 +291,10 @@ func TestGameRepository(t *testing.T) {
 	t.Run("Create", func(t *testing.T) {
 		db := newTestDB(t)
 		repo := NewGameRepository(db)
+		seedList(t, db, "list-1", "Test List")
 
 		now := time.Now()
-		game, err := repo.Create(context.Background())
+		game, err := repo.Create(context.Background(), "list-1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -276,9 +314,10 @@ func TestGameRepository(t *testing.T) {
 	t.Run("AddPlayer", func(t *testing.T) {
 		db := newTestDB(t)
 		repo := NewGameRepository(db)
+		seedList(t, db, "list-1", "Test List")
 
 		now := time.Now()
-		game, err := repo.Create(context.Background())
+		game, err := repo.Create(context.Background(), "list-1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -322,9 +361,10 @@ func TestGameRepository(t *testing.T) {
 	t.Run("SetPlayerState", func(t *testing.T) {
 		db := newTestDB(t)
 		repo := NewGameRepository(db)
+		seedList(t, db, "list-1", "Test List")
 
 		now := time.Now()
-		game, err := repo.Create(context.Background())
+		game, err := repo.Create(context.Background(), "list-1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -373,9 +413,10 @@ func TestGameRepository(t *testing.T) {
 	t.Run("GetPlayers", func(t *testing.T) {
 		db := newTestDB(t)
 		repo := NewGameRepository(db)
+		seedList(t, db, "list-1", "Test List")
 
 		now := time.Now()
-		game, err := repo.Create(context.Background())
+		game, err := repo.Create(context.Background(), "list-1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -440,9 +481,10 @@ func TestGameRepository(t *testing.T) {
 	t.Run("SendMessage", func(t *testing.T) {
 		db := newTestDB(t)
 		repo := NewGameRepository(db)
+		seedList(t, db, "list-1", "Test List")
 
 		now := time.Now()
-		game, err := repo.Create(context.Background())
+		game, err := repo.Create(context.Background(), "list-1")
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -457,7 +499,7 @@ func TestGameRepository(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		turn, err := repo.AddTurn(context.Background(), game.ID, "word-id")
+		turn, err := repo.AddTurn(context.Background(), AddTurnParams{GameID: game.ID, TellerID: "teller", OptionA: "word-id", OptionB: "word-id", OptionC: "word-id"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -509,7 +551,7 @@ func TestGameRepository(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = db.Exec("INSERT INTO game_turns (id, game_id, word_id, created_at) VALUES ('turn-id', 'game-id', 'word-id', ?);", now.UnixMicro())
+		_, err = db.Exec("INSERT INTO game_turns (id, game_id, word_id, teller_id, option_a, option_b, option_c, created_at, started_at) VALUES ('turn-id', 'game-id', 'word-id', 'teller', 'word-id', 'word-id', 'word-id', ?, ?);", now.UnixMicro(), now.UnixMicro())
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -552,7 +594,7 @@ func TestGameRepository(t *testing.T) {
 			}
 		}
 	})
-	t.Run("AddTurn", func(t *testing.T) {
+	t.Run("AddTurn and SetTurnWord", func(t *testing.T) {
 		db := newTestDB(t)
 		repo := NewGameRepository(db)
 
@@ -562,14 +604,37 @@ func TestGameRepository(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = db.Exec("INSERT INTO words (id, word, hint) VALUES ('word-id', 'word', 'hint');")
+		_, err = db.Exec("INSERT INTO words (id, word, hint) VALUES ('word-id', 'word', 'hint'), ('w2', 'word2', 'h2'), ('w3', 'word3', 'h3');")
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = repo.AddTurn(context.Background(), "game-id", "word-id")
+		turn, err := repo.AddTurn(context.Background(), AddTurnParams{
+			GameID: "game-id", TellerID: "teller-1",
+			OptionA: "word-id", OptionB: "w2", OptionC: "w3",
+		})
 		if err != nil {
 			t.Fatal(err)
+		}
+		if turn.WordID != "" {
+			t.Errorf("new turn should have empty word_id, got %q", turn.WordID)
+		}
+		if turn.TellerID != "teller-1" {
+			t.Errorf("teller: got %q", turn.TellerID)
+		}
+
+		if err := repo.SetTurnWord(context.Background(), turn.ID, "w2"); err != nil {
+			t.Fatal(err)
+		}
+		got, err := repo.GetLatestTurn(context.Background(), "game-id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.WordID != "w2" {
+			t.Errorf("word_id after pick: got %q want w2", got.WordID)
+		}
+		if got.StartedAt.IsZero() {
+			t.Error("started_at should be set after pick")
 		}
 	})
 	t.Run("GetLatestTurn", func(t *testing.T) {
@@ -588,17 +653,17 @@ func TestGameRepository(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		_, err = repo.AddTurn(context.Background(), "game-id", "word-id-1")
+		_, err = repo.AddTurn(context.Background(), AddTurnParams{GameID: "game-id", TellerID: "teller", OptionA: "word-id-1", OptionB: "word-id-1", OptionC: "word-id-1"})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = repo.AddTurn(context.Background(), "game-id", "word-id-2")
+		_, err = repo.AddTurn(context.Background(), AddTurnParams{GameID: "game-id", TellerID: "teller", OptionA: "word-id-2", OptionB: "word-id-2", OptionC: "word-id-2"})
 		if err != nil {
 			t.Fatal(err)
 		}
 
-		_, err = repo.AddTurn(context.Background(), "game-id", "word-id-3")
+		third, err := repo.AddTurn(context.Background(), AddTurnParams{GameID: "game-id", TellerID: "teller", OptionA: "word-id-3", OptionB: "word-id-3", OptionC: "word-id-3"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -608,12 +673,23 @@ func TestGameRepository(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		if turn.WordID != "word-id-3" {
-			t.Errorf("expected word id %s but got %s", "word-id-3", turn.WordID)
+		if turn.ID != third.ID {
+			t.Errorf("expected latest turn id %s but got %s", third.ID, turn.ID)
+		}
+		if turn.OptionA != "word-id-3" {
+			t.Errorf("expected option_a word-id-3 got %s", turn.OptionA)
 		}
 
 		if turn.CreatedAt.Compare(now) != 1 {
 			t.Errorf("expected created_at after %v but got %v", now, turn.CreatedAt)
+		}
+
+		n, err := repo.CountTurns(context.Background(), "game-id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if n != 3 {
+			t.Errorf("CountTurns: got %d want 3", n)
 		}
 	})
 	t.Run("AddScore", func(t *testing.T) {
@@ -706,7 +782,8 @@ func insertScoreParents(t *testing.T, db *sql.DB, gameID, playerID, messageID, t
 	mustExec("INSERT INTO games (id, created_at, updated_at) VALUES (?, ?, ?);", gameID, now, now)
 	mustExec("INSERT INTO users (id, nickname, created_at, updated_at) VALUES (?, ?, ?, ?);", playerID, "nick", now, now)
 	mustExec("INSERT INTO words (id, word, hint) VALUES (?, ?, ?);", wordID, "word", "hint")
-	mustExec("INSERT INTO game_turns (id, game_id, word_id, created_at) VALUES (?, ?, ?, ?);", turnID, gameID, wordID, now)
+	mustExec(`INSERT INTO game_turns (id, game_id, word_id, teller_id, option_a, option_b, option_c, created_at, started_at)
+		VALUES (?, ?, ?, 'teller', ?, ?, ?, ?, ?);`, turnID, gameID, wordID, wordID, wordID, wordID, now, now)
 	mustExec("INSERT INTO messages (id, game_id, player_id, turn_id, content, created_at) VALUES (?, ?, ?, ?, ?, ?);", messageID, gameID, playerID, turnID, "content", now)
 }
 
@@ -731,7 +808,8 @@ func TestForeignKeysEnforced(t *testing.T) {
 	})
 
 	t.Run("game_turns references games and words", func(t *testing.T) {
-		_, err := db.Exec("INSERT INTO game_turns (id, game_id, word_id, created_at) VALUES ('NoSuch', 'NoSuch', 'NoSuch', 0);")
+		_, err := db.Exec(`INSERT INTO game_turns (id, game_id, word_id, teller_id, option_a, option_b, option_c, created_at)
+			VALUES ('NoSuch', 'NoSuch', 'NoSuch', 't', 'a', 'b', 'c', 0);`)
 		if err == nil {
 			t.Fatalf("expected FK violation inserting orphan game_turns row")
 		}

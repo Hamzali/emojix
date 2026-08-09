@@ -14,9 +14,17 @@ type UserRepository interface {
 	CreateOrUpdate(ctx context.Context, id string, params UserCreateOrUpdateParams) error
 }
 
+type AddTurnParams struct {
+	GameID   string
+	TellerID string
+	OptionA  string
+	OptionB  string
+	OptionC  string
+}
+
 type GameRepository interface {
 	FindByID(ctx context.Context, id string) (model.Game, error)
-	Create(ctx context.Context) (model.Game, error)
+	Create(ctx context.Context, listID string) (model.Game, error)
 
 	// Players/Users
 	AddPlayer(ctx context.Context, gameID string, userID string) error
@@ -24,7 +32,9 @@ type GameRepository interface {
 	GetPlayers(ctx context.Context, gameID string) ([]model.Player, error)
 
 	GetLatestTurn(ctx context.Context, gameID string) (model.GameTurn, error)
-	AddTurn(ctx context.Context, gameID string, wordID string) (model.GameTurn, error)
+	AddTurn(ctx context.Context, params AddTurnParams) (model.GameTurn, error)
+	SetTurnWord(ctx context.Context, turnID string, wordID string) error
+	CountTurns(ctx context.Context, gameID string) (int, error)
 
 	// Message/Content
 	GetMessages(ctx context.Context, gameID string) ([]model.Message, error)
@@ -35,7 +45,9 @@ type GameRepository interface {
 }
 
 type WordRepository interface {
-	GetAll(ctx context.Context) ([]model.Word, error)
+	GetLists(ctx context.Context) ([]model.WordList, error)
+	// GetUnusedByList returns words in listID not yet played (word_id set) in gameID.
+	GetUnusedByList(ctx context.Context, listID, gameID string) ([]model.Word, error)
 	FindByID(ctx context.Context, id string) (model.Word, error)
 }
 

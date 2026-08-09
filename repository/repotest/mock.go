@@ -17,14 +17,17 @@ import (
 type MockGameRepository struct {
 	repository.GameRepository
 	FindByIDMock         func(ctx context.Context, id string) (model.Game, error)
-	CreateMock           func(ctx context.Context) (model.Game, error)
+	CreateMock           func(ctx context.Context, listID string) (model.Game, error)
 	CreateCalled         bool
 	GetPlayersMock       func(ctx context.Context, id string) ([]model.Player, error)
 	GetMessagesMock      func(ctx context.Context, id string) ([]model.Message, error)
 	GetScoresMock        func(ctx context.Context, id string) ([]model.Score, error)
 	GetLatestTurnMock    func(ctx context.Context, id string) (model.GameTurn, error)
-	AddTurnMock          func(ctx context.Context, gameID string, wordID string) (model.GameTurn, error)
+	AddTurnMock          func(ctx context.Context, params repository.AddTurnParams) (model.GameTurn, error)
 	AddTurnCalled        bool
+	SetTurnWordMock      func(ctx context.Context, turnID, wordID string) error
+	SetTurnWordCalled    bool
+	CountTurnsMock       func(ctx context.Context, gameID string) (int, error)
 	SendMessageMock      func(ctx context.Context, gameID string, turnID string, userID string, content string) (model.Message, error)
 	SendMessageCalled    bool
 	AddPlayerMock        func(ctx context.Context, id string, playerID string) error
@@ -39,9 +42,9 @@ func (m *MockGameRepository) FindByID(ctx context.Context, id string) (model.Gam
 	return m.FindByIDMock(ctx, id)
 }
 
-func (m *MockGameRepository) Create(ctx context.Context) (model.Game, error) {
+func (m *MockGameRepository) Create(ctx context.Context, listID string) (model.Game, error) {
 	m.CreateCalled = true
-	return m.CreateMock(ctx)
+	return m.CreateMock(ctx, listID)
 }
 
 func (m *MockGameRepository) GetPlayers(ctx context.Context, id string) ([]model.Player, error) {
@@ -56,9 +59,22 @@ func (m *MockGameRepository) GetScores(ctx context.Context, id string) ([]model.
 func (m *MockGameRepository) GetLatestTurn(ctx context.Context, id string) (model.GameTurn, error) {
 	return m.GetLatestTurnMock(ctx, id)
 }
-func (m *MockGameRepository) AddTurn(ctx context.Context, gameID string, wordID string) (model.GameTurn, error) {
+func (m *MockGameRepository) AddTurn(ctx context.Context, params repository.AddTurnParams) (model.GameTurn, error) {
 	m.AddTurnCalled = true
-	return m.AddTurnMock(ctx, gameID, wordID)
+	return m.AddTurnMock(ctx, params)
+}
+func (m *MockGameRepository) SetTurnWord(ctx context.Context, turnID, wordID string) error {
+	m.SetTurnWordCalled = true
+	if m.SetTurnWordMock != nil {
+		return m.SetTurnWordMock(ctx, turnID, wordID)
+	}
+	return nil
+}
+func (m *MockGameRepository) CountTurns(ctx context.Context, gameID string) (int, error) {
+	if m.CountTurnsMock != nil {
+		return m.CountTurnsMock(ctx, gameID)
+	}
+	return 0, nil
 }
 func (m *MockGameRepository) SendMessage(ctx context.Context, gameID string, turnID string, userID string, content string) (model.Message, error) {
 	m.SendMessageCalled = true
@@ -79,16 +95,26 @@ func (m *MockGameRepository) AddScore(ctx context.Context, gameID string, userID
 
 type MockWordRepository struct {
 	repository.WordRepository
-	FindByIDMock func(ctx context.Context, id string) (model.Word, error)
-	GetAllMock   func(ctx context.Context) ([]model.Word, error)
+	FindByIDMock         func(ctx context.Context, id string) (model.Word, error)
+	GetListsMock         func(ctx context.Context) ([]model.WordList, error)
+	GetUnusedByListMock  func(ctx context.Context, listID, gameID string) ([]model.Word, error)
+	GetUnusedByListCount int
 }
 
 func (m *MockWordRepository) FindByID(ctx context.Context, id string) (model.Word, error) {
 	return m.FindByIDMock(ctx, id)
 }
 
-func (m *MockWordRepository) GetAll(ctx context.Context) ([]model.Word, error) {
-	return m.GetAllMock(ctx)
+func (m *MockWordRepository) GetLists(ctx context.Context) ([]model.WordList, error) {
+	if m.GetListsMock != nil {
+		return m.GetListsMock(ctx)
+	}
+	return nil, nil
+}
+
+func (m *MockWordRepository) GetUnusedByList(ctx context.Context, listID, gameID string) ([]model.Word, error) {
+	m.GetUnusedByListCount++
+	return m.GetUnusedByListMock(ctx, listID, gameID)
 }
 
 type MockUserRepository struct {

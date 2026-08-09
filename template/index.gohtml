@@ -15,7 +15,13 @@
 
         <div class="window-content">
           <div class="form">
-            <form method="post" action="/game/new">
+            <form method="post" action="/game/new" class="new-game-form">
+              <label for="list-id">Word list</label>
+              <select id="list-id" name="list-id" required>
+                {{ range .Lists }}
+                  <option value="{{ .ID }}">{{ .Title }}</option>
+                {{ end }}
+              </select>
               <button type="submit">New Game</button>
             </form>
 

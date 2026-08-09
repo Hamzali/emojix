@@ -38,8 +38,14 @@ func newE2EServer(t *testing.T) (*httptest.Server, *http.Client) {
 		t.Fatalf("apply migrations: %v", err)
 	}
 
-	// A single word makes the random word pick deterministic.
-	_, err = db.Exec("INSERT INTO words (id, word, hint) VALUES ('w1', 'Apple', 'fruit hint 🍎');")
+	// Dense enough for 3 options; one list, three words.
+	_, err = db.Exec(`
+		INSERT INTO word_lists (id, title) VALUES ('l1', 'Test List');
+		INSERT INTO words (id, list_id, word, hint) VALUES
+			('w1', 'l1', 'Apple', 'fruit hint 🍎'),
+			('w2', 'l1', 'Banana', 'yellow 🍌'),
+			('w3', 'l1', 'Cherry', 'red 🍒');
+	`)
 	if err != nil {
 		t.Fatalf("seed words: %v", err)
 	}
@@ -76,9 +82,9 @@ func newE2EServer(t *testing.T) (*httptest.Server, *http.Client) {
 	return ts, client
 }
 
-func doWithCookies(t *testing.T, client *http.Client, method, url string, body io.Reader, cookies []*http.Cookie) *http.Response {
+func doWithCookies(t *testing.T, client *http.Client, method, urlStr string, body io.Reader, cookies []*http.Cookie) *http.Response {
 	t.Helper()
-	req, err := http.NewRequest(method, url, body)
+	req, err := http.NewRequest(method, urlStr, body)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -90,17 +96,13 @@ func doWithCookies(t *testing.T, client *http.Client, method, url string, body i
 	}
 	resp, err := client.Do(req)
 	if err != nil {
-		t.Fatalf("%s %s: %v", method, url, err)
+		t.Fatalf("%s %s: %v", method, urlStr, err)
 	}
 	return resp
 }
 
-// TestE2EInitNewGameGuessFlow drives a full session through the real stack:
-// init session → create game → see masked word → guess correctly → turn ends.
-func TestE2EInitNewGameGuessFlow(t *testing.T) {
-	ts, client := newE2EServer(t)
-
-	// 1. Init session: creates the user and sets both cookies.
+func initSession(t *testing.T, ts *httptest.Server, client *http.Client) (cookies []*http.Cookie, nickname string) {
+	t.Helper()
 	resp, err := client.Get(ts.URL + "/init")
 	if err != nil {
 		t.Fatalf("GET /init: %v", err)
@@ -109,11 +111,7 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 	if resp.StatusCode != http.StatusFound {
 		t.Fatalf("GET /init status = %d, want 302", resp.StatusCode)
 	}
-	cookies := resp.Cookies()
-	if len(cookies) != 2 {
-		t.Fatalf("expected 2 session cookies, got %d", len(cookies))
-	}
-	var nickname string
+	cookies = resp.Cookies()
 	for _, c := range cookies {
 		if c.Name == nicknameCookieKey {
 			nickname = c.Value
@@ -122,9 +120,20 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 	if nickname == "" {
 		t.Fatal("nickname cookie not set")
 	}
+	return cookies, nickname
+}
 
-	// 2. Create a game: redirects to the new game page.
-	resp = doWithCookies(t, client, "POST", ts.URL+"/game/new", nil, cookies)
+// TestE2EInitNewGameGuessFlow drives a full session through the real stack:
+// init host → create game → pick word → second player joins → guesses → turn ends.
+func TestE2EInitNewGameGuessFlow(t *testing.T) {
+	ts, client := newE2EServer(t)
+
+	// 1. Host session.
+	hostCookies, hostNick := initSession(t, ts, client)
+
+	// 2. Create a game with list l1.
+	form := url.Values{"list-id": {"l1"}}
+	resp := doWithCookies(t, client, "POST", ts.URL+"/game/new", strings.NewReader(form.Encode()), hostCookies)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("POST /game/new status = %d, want 303", resp.StatusCode)
@@ -134,9 +143,8 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 		t.Fatalf("POST /game/new Location = %q, want /game/{id}", gamePath)
 	}
 
-	// 3. Game page: masked word, hint and own nickname visible; the word
-	// itself must NOT leak.
-	resp = doWithCookies(t, client, "GET", ts.URL+gamePath, nil, cookies)
+	// 3. Host (teller) sees pick UI with 3 options.
+	resp = doWithCookies(t, client, "GET", ts.URL+gamePath, nil, hostCookies)
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
@@ -146,6 +154,40 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 		t.Fatalf("GET %s status = %d, want 200", gamePath, resp.StatusCode)
 	}
 	page := string(body)
+	if !strings.Contains(page, "Pick a word") {
+		t.Errorf("teller page missing pick prompt")
+	}
+	if !strings.Contains(page, "Apple") || !strings.Contains(page, "Banana") || !strings.Contains(page, "Cherry") {
+		t.Errorf("teller page missing word options")
+	}
+
+	// 4. Host picks Apple.
+	form = url.Values{"word-id": {"w1"}}
+	resp = doWithCookies(t, client, "POST", ts.URL+gamePath+"/pick", strings.NewReader(form.Encode()), hostCookies)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("POST pick status = %d, want 303", resp.StatusCode)
+	}
+
+	// 5. Guesser session joins.
+	guesserCookies, guesserNick := initSession(t, ts, client)
+	resp = doWithCookies(t, client, "GET", ts.URL+gamePath+"/join", nil, guesserCookies)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusFound {
+		t.Fatalf("join status = %d, want 302", resp.StatusCode)
+	}
+
+	// 6. Guesser sees masked word + hint, not the plain word.
+	resp = doWithCookies(t, client, "GET", ts.URL+gamePath, nil, guesserCookies)
+	body, err = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s as guesser status = %d, want 200", gamePath, resp.StatusCode)
+	}
+	page = string(body)
 	if !strings.Contains(page, "fruit hint 🍎") {
 		t.Errorf("game page missing emoji hint")
 	}
@@ -155,13 +197,13 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 	if got := strings.Count(page, "<p>*</p>"); got != 5 {
 		t.Errorf("masked word: got %d mask chars, want 5 (Apple)", got)
 	}
-	if !strings.Contains(page, nickname) {
-		t.Errorf("game page missing own nickname %q", nickname)
+	if !strings.Contains(page, guesserNick) {
+		t.Errorf("game page missing guesser nickname %q", guesserNick)
 	}
 
-	// 4. Guess correctly (lowercase: comparison is case-insensitive).
-	form := url.Values{"content": {"apple"}}
-	resp = doWithCookies(t, client, "POST", ts.URL+gamePath+"/guess", strings.NewReader(form.Encode()), cookies)
+	// 7. Guesser guesses correctly.
+	form = url.Values{"content": {"apple"}}
+	resp = doWithCookies(t, client, "POST", ts.URL+gamePath+"/guess", strings.NewReader(form.Encode()), guesserCookies)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("POST guess status = %d, want 200", resp.StatusCode)
@@ -170,9 +212,8 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 		t.Errorf("Hx-Trigger = %q, want guessed", got)
 	}
 
-	// 5. Game page again: the only player guessed, so the turn ended and the
-	// page redirects to the loading screen.
-	resp = doWithCookies(t, client, "GET", ts.URL+gamePath, nil, cookies)
+	// 8. Only guesser needed to finish (teller excluded) → loading redirect.
+	resp = doWithCookies(t, client, "GET", ts.URL+gamePath, nil, guesserCookies)
 	resp.Body.Close()
 	if resp.StatusCode != http.StatusSeeOther {
 		t.Fatalf("GET %s after guess status = %d, want 303", gamePath, resp.StatusCode)
@@ -181,8 +222,8 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 		t.Errorf("Location = %q, want %s", loc, gamePath+"/loading")
 	}
 
-	// 6. Loading page renders.
-	resp = doWithCookies(t, client, "GET", ts.URL+gamePath+"/loading", nil, cookies)
+	// 9. Loading page renders.
+	resp = doWithCookies(t, client, "GET", ts.URL+gamePath+"/loading", nil, guesserCookies)
 	body, err = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
@@ -195,8 +236,8 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 		t.Errorf("loading page missing expected content")
 	}
 
-	// 7. Leaderboard reflects the score earned by the guess.
-	resp = doWithCookies(t, client, "GET", ts.URL+gamePath+"/leaderboard", nil, cookies)
+	// 10. Leaderboard reflects the score.
+	resp = doWithCookies(t, client, "GET", ts.URL+gamePath+"/leaderboard", nil, guesserCookies)
 	body, err = io.ReadAll(resp.Body)
 	resp.Body.Close()
 	if err != nil {
@@ -205,7 +246,8 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET leaderboard status = %d, want 200", resp.StatusCode)
 	}
-	if !strings.Contains(string(body), nickname) {
-		t.Errorf("leaderboard missing nickname %q", nickname)
+	if !strings.Contains(string(body), guesserNick) {
+		t.Errorf("leaderboard missing nickname %q", guesserNick)
 	}
+	_ = hostNick
 }

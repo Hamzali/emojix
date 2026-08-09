@@ -387,19 +387,21 @@ func TestJoinGame_NoSession_Redirects(t *testing.T) {
 
 func TestNewGame_Redirects303(t *testing.T) {
 	uc := newMockUsecase()
-	uc.InitGameFn = func(ctx context.Context, userID string) (model.Game, error) {
+	uc.InitGameFn = func(ctx context.Context, userID string, listID string) (model.Game, error) {
 		return model.Game{ID: "g9"}, nil
 	}
 	view := &MockView{}
 	srv := newServer(uc, view)
 
-	r := withSession(newReq("POST", "/game/new", nil), "u1", "nick")
+	body := strings.NewReader("list-id=action")
+	r := withSession(newReq("POST", "/game/new", body), "u1", "nick")
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
 	srv.NewGame(w, r)
 
-	if uc.InitGameCalls != 1 || uc.InitGameLastUserID != "u1" {
-		t.Fatalf("InitGame call = %+v", uc.InitGameCalls)
+	if uc.InitGameCalls != 1 || uc.InitGameLastUserID != "u1" || uc.InitGameLastListID != "action" {
+		t.Fatalf("InitGame call user=%q list=%q calls=%d", uc.InitGameLastUserID, uc.InitGameLastListID, uc.InitGameCalls)
 	}
 	if w.Code != http.StatusSeeOther {
 		t.Fatalf("status = %d, want 303", w.Code)
@@ -457,13 +459,15 @@ func TestNewGame_StaleUser_RedirectsToInit(t *testing.T) {
 
 func TestNewGame_InitGameError_500(t *testing.T) {
 	uc := newMockUsecase()
-	uc.InitGameFn = func(ctx context.Context, userID string) (model.Game, error) {
+	uc.InitGameFn = func(ctx context.Context, userID string, listID string) (model.Game, error) {
 		return model.Game{}, errSentinel
 	}
 	view := &MockView{}
 	srv := newServer(uc, view)
 
-	r := withSession(newReq("POST", "/game/new", nil), "u1", "nick")
+	body := strings.NewReader("list-id=action")
+	r := withSession(newReq("POST", "/game/new", body), "u1", "nick")
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 	w := httptest.NewRecorder()
 
 	srv.NewGame(w, r)

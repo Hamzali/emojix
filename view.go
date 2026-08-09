@@ -17,6 +17,7 @@ var templateFS embed.FS
 type IndexPageViewParam struct {
 	Title    string
 	Nickname string
+	Lists    []model.WordList
 }
 
 type GamePageViewParam struct {
@@ -26,6 +27,9 @@ type GamePageViewParam struct {
 	MaskedWord    []string
 	EmojiHint     string
 	TurnStartedAt time.Time
+	AwaitingPick  bool
+	IsTeller      bool
+	WordOptions   []model.Word
 }
 
 type GameLoadingPageViewParam struct {
