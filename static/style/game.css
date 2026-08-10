@@ -1,53 +1,106 @@
-/* layout */
+/* ── layout ───────────────────────────────────────────────
+   Three sibling surfaces. No nested windows.
+   mobile: stage → chat → rail
+   desktop: rail | board(stage + chat)
+*/
 .root {
   min-height: 100dvh;
+  display: grid;
+  grid-template-rows: auto auto auto;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  align-content: start;
+}
+
+.rail {
+  order: 3;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-2);
+  background: var(--bg-window);
+  border: 3px solid var(--stroke-black);
+  border-radius: 6px;
+  box-shadow: var(--shadow-hard-sm);
+  min-height: 0;
 }
 
-.sidebar {
+.board {
+  order: 1;
+  display: contents;
+}
+
+.stage {
+  order: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-2);
+  background: var(--bg-surface);
+  border: 3px solid var(--stroke-black);
+  border-radius: 6px;
+  box-shadow: var(--shadow-hard);
+  min-height: 14rem;
+}
+
+.chat {
   order: 2;
-  flex: 0 0 auto;
-  min-height: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-}
-
-.main {
-  order: 1;
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-3);
+  padding: var(--space-2);
+  background: var(--bg-window);
+  border: 3px solid var(--stroke-black);
+  border-radius: 6px;
+  box-shadow: var(--shadow-hard-sm);
   min-height: 0;
 }
 
 @media screen and (width >= 64rem) {
   .root {
-    flex-direction: row;
-    align-items: stretch;
+    grid-template-columns: 16rem 1fr;
+    grid-template-rows: 1fr;
     height: 100dvh;
     min-height: 100dvh;
-    gap: var(--space-3);
-    padding: var(--space-3);
+    gap: var(--space-2);
+    padding: var(--space-2);
+    align-content: stretch;
   }
 
-  .sidebar {
+  .rail {
     order: 0;
-    flex: 0 0 15rem;
-    overflow-y: auto;
+    grid-column: 1;
+    grid-row: 1;
+    overflow: hidden;
   }
 
-  .main {
+  .board {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-2);
+    grid-column: 2;
+    grid-row: 1;
+    min-height: 0;
+    overflow: hidden;
+  }
+
+  .stage {
     order: 0;
-    overflow-y: auto;
+    flex: 0 0 auto;
+    min-height: 18rem;
+    padding: var(--space-4) var(--space-3);
+  }
+
+  .chat {
+    order: 0;
+    flex: 1 1 auto;
+    min-height: 0;
   }
 }
 
-/* buttons */
+/* ── controls ─────────────────────────────────────────── */
 .btn-ghost {
   background-color: var(--bg-surface);
 }
@@ -82,10 +135,11 @@
   border: 0;
 }
 
-/* sidebar */
+/* ── rail / players ───────────────────────────────────── */
 .actions {
   display: flex;
   gap: var(--space-1);
+  flex-shrink: 0;
 }
 
 .actions .btn {
@@ -96,8 +150,8 @@
 
 .players {
   min-height: 0;
-  max-height: 10rem;
   overflow-y: auto;
+  max-height: 11rem;
 }
 
 @media screen and (width >= 64rem) {
@@ -113,26 +167,22 @@
   margin: 0;
   display: flex;
   flex-direction: column;
+  gap: 0.15rem;
 }
 
 .player {
   display: grid;
   grid-template-columns: 1fr auto auto;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.45rem 0;
-  border-bottom: 2px solid color-mix(in srgb, var(--stroke-black) 18%, transparent);
+  gap: 0.45rem;
+  padding: 0.4rem 0.5rem;
+  border-radius: var(--radius-sm);
   font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
 }
 
-.player:last-child {
-  border-bottom: 0;
-}
-
-.player.is-me .player-name strong {
-  color: var(--stroke-black);
-  font-weight: 800;
+.player.is-me {
+  background: color-mix(in srgb, var(--ui-orange) 22%, transparent);
 }
 
 .player.is-guessed .player-status {
@@ -147,10 +197,19 @@
   font-weight: 700;
 }
 
+.player-name strong {
+  font-weight: 800;
+}
+
 .player-status {
   min-width: 1rem;
   text-align: center;
   font-weight: 800;
+  color: transparent;
+}
+
+.player.is-guessed .player-status {
+  color: var(--ui-green);
 }
 
 .score {
@@ -161,225 +220,25 @@
 }
 
 .empty {
+  margin: 0;
   text-align: center;
   color: var(--text-muted);
   font-size: 0.85rem;
-  padding: var(--space-1) 0;
+  padding: var(--space-2) 0;
 }
 
-/* play area */
-.play {
-  flex: 0 0 auto;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-2);
-}
-
+/* ── stage ────────────────────────────────────────────── */
 .emoji-display {
-  font-size: clamp(2.4rem, 8vw, 3.4rem);
+  font-size: clamp(2.6rem, 9vw, 3.6rem);
   text-align: center;
-  letter-spacing: 0.3rem;
-  line-height: 1.15;
+  letter-spacing: 0.35rem;
+  line-height: 1.1;
 }
 
-.word-display {
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 0.35rem;
-  min-height: 2.5rem;
-  flex-wrap: wrap;
-  max-width: 100%;
-}
-
-.letter {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  min-width: 1.5rem;
-  height: 2rem;
-  padding: 0 0.15rem;
-  border-bottom: 3px solid var(--stroke-black);
-  font-family: "Fredoka", system-ui, sans-serif;
-  font-size: clamp(1.2rem, 3.5vw, 1.65rem);
-  font-weight: 700;
-  line-height: 1;
-  text-transform: uppercase;
-  color: var(--text-primary);
-}
-
-.letter.is-blank {
-  color: transparent;
-  min-width: 1.35rem;
-}
-
-.letter.is-space {
-  width: 0.7rem;
-  min-width: 0.7rem;
-  border: 0;
-}
-
-.guess-form,
-.chat-form {
-  display: flex;
-  gap: var(--space-1);
-  align-items: stretch;
-  width: min(100%, 28rem);
-}
-
-.guess-form textarea,
-.chat-form textarea {
-  flex: 1;
-  resize: none;
-  min-height: 2.6rem;
-  field-sizing: content;
-  max-height: 6rem;
-}
-
-.guess-form button,
-.chat-form button {
-  font-size: 0.95rem;
-  white-space: nowrap;
-}
-
-.pick-prompt,
-.pick-wait,
-.teller-note,
-.guessed-note {
-  text-align: center;
-  margin: 0;
-  font-weight: 700;
-}
-
-.pick-prompt {
-  font-family: "Fredoka", system-ui, sans-serif;
-  font-size: 1.15rem;
-}
-
-.pick-wait,
-.teller-note {
-  color: var(--text-muted);
-  font-weight: 600;
-  padding: var(--space-2) 0;
-}
-
-.guessed-note {
-  color: var(--stroke-black);
-  font-family: "Fredoka", system-ui, sans-serif;
-  font-size: 1.1rem;
-}
-
-.word-options {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: center;
-  gap: var(--space-1);
-  width: 100%;
-}
-
-.word-options form {
-  margin: 0;
-  flex: 1 1 8rem;
-  max-width: 12rem;
-}
-
-.word-option {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 0.3rem;
-  width: 100%;
-  min-height: 5.5rem;
-  padding: var(--space-2);
-  background-color: var(--bg-surface);
-}
-
-.word-option:hover {
-  background-color: color-mix(in srgb, var(--ui-yellow) 35%, var(--bg-surface));
-}
-
-.word-option-text {
-  font-family: "Fredoka", system-ui, sans-serif;
-  font-size: 1.05rem;
-  font-weight: 700;
-  text-align: center;
-}
-
-.word-option-hint {
-  font-size: 1.5rem;
-  line-height: 1;
-}
-
-/* chat */
-.chat {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  min-height: 0;
-  gap: var(--space-1);
-  border-top: 3px solid var(--stroke-black);
-  padding-top: var(--space-2);
-}
-
-.messages {
-  flex: 1;
-  overflow-y: auto;
-  max-height: 14rem;
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-}
-
-@media screen and (width >= 64rem) {
-  .messages {
-    max-height: none;
-  }
-}
-
-.messages:empty::after {
-  content: "No messages yet. Say hi.";
-  display: block;
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.85rem;
-  padding: var(--space-2) 0;
-}
-
-.msg {
-  margin: 0;
-  padding: 0.15rem 0;
-  font-size: 0.9rem;
-  line-height: 1.35;
-}
-
-.msg-name {
-  font-weight: 800;
-  color: var(--stroke-black);
-  margin-right: 0.4rem;
-}
-
-.msg.is-me .msg-name {
-  color: var(--ui-blue);
-}
-
-.msg strong {
-  color: var(--ui-orange);
-  font-weight: 800;
-}
-
-.chat-form {
-  width: 100%;
-  max-width: none;
-  flex: 0 0 auto;
-}
-
-/* timer */
 .turn-timer {
-  width: min(100%, 20rem);
-  height: 8px;
-  background-color: color-mix(in srgb, var(--bg-desktop) 55%, var(--stroke-black));
+  width: min(100%, 22rem);
+  height: 10px;
+  background: color-mix(in srgb, var(--bg-window) 55%, var(--stroke-black));
   border: 2px solid var(--stroke-black);
   border-radius: 999px;
   overflow: hidden;
@@ -395,7 +254,204 @@
     background-color 400ms ease;
 }
 
-/* loading interstitial */
+.word-display {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.4rem;
+  min-height: 2.75rem;
+  flex-wrap: wrap;
+  max-width: 100%;
+}
+
+.letter {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.55rem;
+  height: 2.2rem;
+  padding: 0 0.15rem;
+  border-bottom: 3px solid var(--stroke-black);
+  font-family: "Fredoka", system-ui, sans-serif;
+  font-size: clamp(1.25rem, 3.8vw, 1.75rem);
+  font-weight: 700;
+  line-height: 1;
+  text-transform: uppercase;
+  color: var(--text-primary);
+}
+
+.letter.is-blank {
+  color: transparent;
+  min-width: 1.4rem;
+}
+
+.letter.is-space {
+  width: 0.75rem;
+  min-width: 0.75rem;
+  border: 0;
+}
+
+.guess-form {
+  display: flex;
+  gap: var(--space-1);
+  align-items: stretch;
+  width: min(100%, 26rem);
+}
+
+.guess-form textarea {
+  flex: 1;
+  resize: none;
+  min-height: 2.6rem;
+  field-sizing: content;
+  max-height: 6rem;
+}
+
+.guess-form button {
+  white-space: nowrap;
+}
+
+.pick-prompt,
+.pick-wait,
+.teller-note,
+.guessed-note {
+  margin: 0;
+  text-align: center;
+  font-weight: 700;
+}
+
+.pick-prompt {
+  font-family: "Fredoka", system-ui, sans-serif;
+  font-size: 1.2rem;
+}
+
+.pick-wait,
+.teller-note {
+  color: var(--text-muted);
+  font-weight: 600;
+}
+
+.guessed-note {
+  font-family: "Fredoka", system-ui, sans-serif;
+  font-size: 1.15rem;
+  color: var(--ui-green);
+}
+
+.word-options {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-1);
+  width: 100%;
+  max-width: 36rem;
+}
+
+.word-options form {
+  margin: 0;
+  flex: 1 1 7.5rem;
+  max-width: 11rem;
+}
+
+.word-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  width: 100%;
+  min-height: 5.25rem;
+  padding: var(--space-2) var(--space-1);
+  background: var(--bg-window);
+}
+
+.word-option:hover {
+  background: color-mix(in srgb, var(--ui-yellow) 40%, var(--bg-window));
+}
+
+.word-option-text {
+  font-family: "Fredoka", system-ui, sans-serif;
+  font-size: 1.05rem;
+  font-weight: 700;
+  text-align: center;
+  line-height: 1.15;
+}
+
+.word-option-hint {
+  font-size: 1.55rem;
+  line-height: 1;
+}
+
+/* ── chat ─────────────────────────────────────────────── */
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 6rem;
+  max-height: 12rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+}
+
+@media screen and (width >= 64rem) {
+  .messages {
+    max-height: none;
+  }
+}
+
+.messages:empty::after {
+  content: "No messages yet. Say hi.";
+  display: grid;
+  place-items: center;
+  height: 100%;
+  min-height: 4rem;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  font-weight: 600;
+}
+
+.msg {
+  margin: 0;
+  padding: 0.2rem 0.15rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+}
+
+.msg-name {
+  font-weight: 800;
+  margin-right: 0.4rem;
+  color: var(--text-muted);
+}
+
+.msg.is-me .msg-name {
+  color: var(--ui-blue);
+}
+
+.msg strong {
+  color: var(--ui-orange);
+  font-weight: 800;
+}
+
+.chat-form {
+  display: flex;
+  gap: var(--space-1);
+  align-items: stretch;
+  flex-shrink: 0;
+  padding-top: var(--space-1);
+  border-top: 2px solid color-mix(in srgb, var(--stroke-black) 18%, transparent);
+}
+
+.chat-form textarea {
+  flex: 1;
+  resize: none;
+  min-height: 2.5rem;
+  field-sizing: content;
+  max-height: 5rem;
+}
+
+.chat-form button {
+  white-space: nowrap;
+}
+
+/* ── loading ──────────────────────────────────────────── */
 .loading-page {
   gap: var(--space-1);
 }

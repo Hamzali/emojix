@@ -9,7 +9,7 @@
   {{ end }}
 
   <div class="root" hx-ext="sse" sse-connect="/game/{{ .GameID }}/sse">
-    <aside class="sidebar">
+    <aside class="rail">
       <div class="actions">
         <a class="btn btn-ghost" href="/">Home</a>
         <button
@@ -30,8 +30,8 @@
       </section>
     </aside>
 
-    <main class="main">
-      <section class="play">
+    <div class="board">
+      <section class="stage">
         {{ if .AwaitingPick }}
           {{ if .IsTeller }}
             <p class="pick-prompt">Pick a word to tell</p>
@@ -131,7 +131,7 @@
           <button type="submit" class="btn-chat">Send</button>
         </form>
       </section>
-    </main>
+    </div>
 
     <div hx-trigger="sse:turnended"></div>
     <script>
