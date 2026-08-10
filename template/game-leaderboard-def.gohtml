@@ -2,15 +2,16 @@
   {{ if .Leaderboard }}
   <ul class="player-list">
     {{ range .Leaderboard }}
-      <li class="player{{ if .Me }} is-me{{ end }}{{ if .GuessedWord }} is-guessed{{ end }}">
+      <li class="player{{ if .Me }} is-me{{ end }}{{ if .GuessedWord }} is-guessed{{ end }}{{ if .IsTeller }} is-teller{{ end }}">
         <span class="player-name">
           {{ if .Me }}
             <strong>{{ .Nickname }}</strong>
           {{ else }}
             {{ .Nickname }}
           {{ end }}
+          {{ if .IsTeller }}<span class="teller-badge">teller</span>{{ end }}
         </span>
-        <span class="player-status">{{ if .GuessedWord }}✓{{ end }}</span>
+        <span class="player-status">{{ if and (not .IsTeller) .GuessedWord }}✓{{ end }}</span>
         <span class="score">{{ .Score }}</span>
       </li>
     {{ end }}

@@ -21,15 +21,18 @@ type IndexPageViewParam struct {
 }
 
 type GamePageViewParam struct {
-	GameID        string
-	Leaderboard   []model.LeaderboardEntry
-	Messages      []model.GameStateMessage
-	MaskedWord    []string
-	EmojiHint     string
-	TurnStartedAt time.Time
-	AwaitingPick  bool
-	IsTeller      bool
-	WordOptions   []model.Word
+	GameID         string
+	Leaderboard    []model.LeaderboardEntry
+	Messages       []model.GameStateMessage
+	MaskedWord     []string
+	EmojiHint      string
+	TurnStartedAt  time.Time
+	AwaitingPick   bool
+	IsTeller       bool
+	TellerNickname string
+	LetterCount    int
+	WordCount      int
+	WordOptions    []model.Word
 }
 
 type GameLoadingPageViewParam struct {

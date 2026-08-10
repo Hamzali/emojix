@@ -1,6 +1,6 @@
 /* ── layout ───────────────────────────────────────────────
    Three sibling surfaces. No nested windows.
-   mobile: stage → chat → rail
+   mobile: rail (compact roster) → stage → chat
    desktop: rail | board(stage + chat)
 */
 .root {
@@ -13,7 +13,7 @@
 }
 
 .rail {
-  order: 3;
+  order: 0;
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
@@ -150,12 +150,14 @@
 
 .players {
   min-height: 0;
-  overflow-y: auto;
-  max-height: 11rem;
+  overflow-x: auto;
+  overflow-y: hidden;
 }
 
 @media screen and (width >= 64rem) {
   .players {
+    overflow-x: hidden;
+    overflow-y: auto;
     max-height: none;
     flex: 1;
   }
@@ -166,23 +168,48 @@
   padding: 0;
   margin: 0;
   display: flex;
-  flex-direction: column;
-  gap: 0.15rem;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  gap: 0.35rem;
+}
+
+@media screen and (width >= 64rem) {
+  .player-list {
+    flex-direction: column;
+    flex-wrap: nowrap;
+    gap: 0.15rem;
+  }
 }
 
 .player {
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: auto auto auto;
   align-items: center;
   gap: 0.45rem;
   padding: 0.4rem 0.5rem;
   border-radius: var(--radius-sm);
   font-size: 0.9rem;
   font-variant-numeric: tabular-nums;
+  flex: 0 0 auto;
+  background: color-mix(in srgb, var(--bg-surface) 70%, transparent);
+  border: 2px solid color-mix(in srgb, var(--stroke-black) 18%, transparent);
+}
+
+@media screen and (width >= 64rem) {
+  .player {
+    grid-template-columns: 1fr auto auto;
+    flex: none;
+    background: transparent;
+    border-color: transparent;
+  }
 }
 
 .player.is-me {
   background: color-mix(in srgb, var(--ui-orange) 22%, transparent);
+}
+
+.player.is-teller {
+  border-color: color-mix(in srgb, var(--ui-blue) 45%, var(--stroke-black));
 }
 
 .player.is-guessed .player-status {
@@ -195,10 +222,35 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  max-width: 9rem;
+}
+
+@media screen and (width >= 64rem) {
+  .player-name {
+    max-width: none;
+  }
 }
 
 .player-name strong {
   font-weight: 800;
+}
+
+.teller-badge {
+  display: inline-block;
+  flex-shrink: 0;
+  padding: 0.05rem 0.35rem;
+  border-radius: 999px;
+  border: 1.5px solid var(--stroke-black);
+  background: var(--ui-blue);
+  color: white;
+  font-size: 0.65rem;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  text-transform: lowercase;
+  line-height: 1.2;
 }
 
 .player-status {
@@ -235,8 +287,15 @@
   line-height: 1.1;
 }
 
-.turn-timer {
+.turn-timer-row {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
   width: min(100%, 22rem);
+}
+
+.turn-timer {
+  flex: 1 1 auto;
   height: 10px;
   background: color-mix(in srgb, var(--bg-window) 55%, var(--stroke-black));
   border: 2px solid var(--stroke-black);
@@ -252,6 +311,25 @@
   transition:
     width 1s linear,
     background-color 400ms ease;
+}
+
+.turn-timer-text {
+  flex: 0 0 auto;
+  min-width: 2.6rem;
+  font-family: "Fredoka", system-ui, sans-serif;
+  font-size: 0.95rem;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  color: var(--text-primary);
+}
+
+.word-meta {
+  margin: 0;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: var(--text-muted);
+  letter-spacing: 0.01em;
 }
 
 .word-display {

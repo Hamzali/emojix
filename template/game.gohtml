@@ -47,22 +47,29 @@
               {{ end }}
             </div>
           {{ else }}
-            <p class="pick-wait">Waiting for the teller to pick a word</p>
+            {{ if .TellerNickname }}
+              <p class="pick-wait">Waiting for {{ .TellerNickname }}…</p>
+            {{ else }}
+              <p class="pick-wait">Waiting for the teller to pick a word</p>
+            {{ end }}
           {{ end }}
         {{ else }}
           <div class="emoji-display" aria-label="Emoji hint">{{ .EmojiHint }}</div>
 
-          <div
-            class="turn-timer"
-            role="progressbar"
-            aria-label="Turn timer"
-            aria-valuemin="0"
-            aria-valuemax="60"
-          >
+          <div class="turn-timer-row">
             <div
-              class="turn-timer-bar"
-              data-start="{{ .TurnStartedAt.UnixMilli }}"
-            ></div>
+              class="turn-timer"
+              role="progressbar"
+              aria-label="Turn timer"
+              aria-valuemin="0"
+              aria-valuemax="60"
+            >
+              <div
+                class="turn-timer-bar"
+                data-start="{{ .TurnStartedAt.UnixMilli }}"
+              ></div>
+            </div>
+            <span class="turn-timer-text" aria-hidden="true">1:00</span>
           </div>
 
           <div
@@ -73,6 +80,9 @@
           >
             {{ template "game-word" . }}
           </div>
+          {{ if gt .LetterCount 0 }}
+            <p class="word-meta">{{ .LetterCount }} letters · {{ .WordCount }} words</p>
+          {{ end }}
 
           {{ if .IsTeller }}
             <p class="teller-note">You're the teller. Others are guessing.</p>
@@ -165,10 +175,18 @@
         const TURN_DURATION = 60000;
         const bar = document.querySelector(".turn-timer-bar");
         const track = document.querySelector(".turn-timer");
+        const text = document.querySelector(".turn-timer-text");
         if (!bar) return;
 
         const startMs = parseInt(bar.dataset.start, 10);
         if (isNaN(startMs)) return;
+
+        function formatRemaining(ms) {
+          const secs = Math.max(0, Math.ceil(ms / 1000));
+          const m = Math.floor(secs / 60);
+          const s = secs % 60;
+          return m + ":" + String(s).padStart(2, "0");
+        }
 
         function update() {
           const remaining = Math.max(0, TURN_DURATION - (Date.now() - startMs));
@@ -176,6 +194,9 @@
           bar.style.width = fraction * 100 + "%";
           if (track) {
             track.setAttribute("aria-valuenow", String(Math.ceil(remaining / 1000)));
+          }
+          if (text) {
+            text.textContent = formatRemaining(remaining);
           }
 
           if (fraction > 0.5) {

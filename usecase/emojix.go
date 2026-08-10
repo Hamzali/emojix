@@ -168,6 +168,7 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 	gameState.CurrentUserID = currentUserID
 	gameState.IsTeller = latestTurn.TellerID == currentUserID
 	gameState.AwaitingPick = latestTurn.WordID == ""
+	gameState.TellerNickname = tellerNickname(activePlayers, latestTurn.TellerID)
 
 	leaderboard := e.buildLeaderboard(currentUserID, latestTurn.ID, latestTurn.TellerID, scores, activePlayers)
 	gameState.Leaderboard = leaderboard
@@ -190,6 +191,7 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 
 	gameState.Hint = word.Hint
 	gameState.TurnStartedAt = latestTurn.StartedAt
+	gameState.LetterCount, gameState.WordCount = wordShape(word.Word)
 
 	// check if turn ended and decide to mask word or not
 	leaderboardEntryMap := map[string]model.LeaderboardEntry{}
@@ -732,6 +734,7 @@ func (e *emojixUsecase) buildLeaderboard(currentUserID string, latestTurnID stri
 			Nickname:    player.Nickname,
 			Me:          player.ID == currentUserID,
 			GuessedWord: isGuessedWord(player.ID),
+			IsTeller:    player.ID == tellerID,
 			Score:       scoreMap[player.ID],
 		}
 
@@ -740,6 +743,26 @@ func (e *emojixUsecase) buildLeaderboard(currentUserID string, latestTurnID stri
 
 	return leaderboardEntries
 
+}
+
+// wordShape returns letter count (spaces excluded) and whitespace-separated
+// word count for the secret phrase shown under the mask blanks.
+func wordShape(word string) (letters, words int) {
+	fields := strings.Fields(word)
+	words = len(fields)
+	for _, f := range fields {
+		letters += len([]rune(f))
+	}
+	return letters, words
+}
+
+func tellerNickname(players []model.Player, tellerID string) string {
+	for _, p := range players {
+		if p.ID == tellerID {
+			return p.Nickname
+		}
+	}
+	return ""
 }
 
 func (e *emojixUsecase) filterActivePlayers(players []model.Player) []model.Player {

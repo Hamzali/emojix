@@ -486,12 +486,16 @@ func TestGame_RendersGamePageWithMaskedWord(t *testing.T) {
 	uc := newMockUsecase()
 	uc.GameStateFn = func(ctx context.Context, gameID, userID string) (model.GameState, error) {
 		return model.GameState{
-			GameID:    "g1",
-			Word:      "apple",
-			Hint:      "fruit",
-			TurnEnded: false,
+			GameID:         "g1",
+			Word:           "apple",
+			Hint:           "fruit",
+			TurnEnded:      false,
+			TellerNickname: "Announcer",
+			LetterCount:    5,
+			WordCount:      1,
 			Leaderboard: []model.LeaderboardEntry{
 				{PlayerID: "u1", Nickname: "nick", Me: true, Score: 5},
+				{PlayerID: "u2", Nickname: "Announcer", IsTeller: true, GuessedWord: true, Score: 0},
 			},
 		}, nil
 	}
@@ -519,8 +523,17 @@ func TestGame_RendersGamePageWithMaskedWord(t *testing.T) {
 	if got.EmojiHint != "fruit" {
 		t.Errorf("EmojiHint = %q, want fruit", got.EmojiHint)
 	}
-	if len(got.Leaderboard) != 1 || got.Leaderboard[0].Me != true {
+	if len(got.Leaderboard) != 2 || got.Leaderboard[0].Me != true {
 		t.Errorf("Leaderboard = %+v", got.Leaderboard)
+	}
+	if !got.Leaderboard[1].IsTeller {
+		t.Errorf("expected teller flag on leaderboard entry")
+	}
+	if got.TellerNickname != "Announcer" {
+		t.Errorf("TellerNickname = %q, want Announcer", got.TellerNickname)
+	}
+	if got.LetterCount != 5 || got.WordCount != 1 {
+		t.Errorf("word meta = %d letters / %d words, want 5/1", got.LetterCount, got.WordCount)
 	}
 }
 

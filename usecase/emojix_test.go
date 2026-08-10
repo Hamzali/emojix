@@ -47,6 +47,9 @@ func assertGameState(t *testing.T, expectedGameState model.GameState, gameState 
 	assertValue(t, "TurnEnded", expectedGameState.TurnEnded, gameState.TurnEnded)
 	assertValue(t, "Word", expectedGameState.Word, gameState.Word)
 	assertValue(t, "Hint", expectedGameState.Hint, gameState.Hint)
+	assertValue(t, "LetterCount", expectedGameState.LetterCount, gameState.LetterCount)
+	assertValue(t, "WordCount", expectedGameState.WordCount, gameState.WordCount)
+	assertValue(t, "TellerNickname", expectedGameState.TellerNickname, gameState.TellerNickname)
 
 	assertValue(t, "Message Length", len(expectedGameState.Messages), len(gameState.Messages))
 	for i, m := range gameState.Messages {
@@ -70,6 +73,7 @@ func assertGameState(t *testing.T, expectedGameState model.GameState, gameState 
 		assertValue(t, fmt.Sprintf("Leaderboard[%d].Me", i), expectedLeaderboard.Me, l.Me)
 		assertValue(t, fmt.Sprintf("Leaderboard[%d].Score", i), expectedLeaderboard.Score, l.Score)
 		assertValue(t, fmt.Sprintf("Leaderboard[%d].GuessedWord", i), expectedLeaderboard.GuessedWord, l.GuessedWord)
+		assertValue(t, fmt.Sprintf("Leaderboard[%d].IsTeller", i), expectedLeaderboard.IsTeller, l.IsTeller)
 	}
 }
 
@@ -134,6 +138,8 @@ func TestGameState(t *testing.T) {
 			TurnEnded:     false,
 			Word:          "**** ****",
 			Hint:          "Some Hint",
+			LetterCount:   8,
+			WordCount:     2,
 			Messages:      []model.GameStateMessage{},
 			Leaderboard: []model.LeaderboardEntry{
 				{PlayerID: "some-user-id", Nickname: "SomeNick", Me: true, GuessedWord: false, Score: 0},
@@ -198,6 +204,8 @@ func TestGameState(t *testing.T) {
 			TurnEnded:     false,
 			Word:          "Some Word",
 			Hint:          "Some Hint",
+			LetterCount:   8,
+			WordCount:     2,
 			Messages: []model.GameStateMessage{
 				{Nickname: "Player1", Me: true, Content: "Some Word"},
 			},
@@ -212,6 +220,95 @@ func TestGameState(t *testing.T) {
 
 	// NOTE: the timeout branch of TurnEnded is covered separately by
 	// TestGameState_TurnTimedOut (uses the T13 FakeClock seam).
+
+	t.Run("marks teller nickname and word shape", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{
+					{ID: "p-1", Nickname: "Guesser", State: model.ActivePlayerState},
+					{ID: "p-teller", Nickname: "Announcer", State: model.ActivePlayerState},
+				}, nil
+			},
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{
+					ID:        "turn-1",
+					WordID:    "word-1",
+					TellerID:  "p-teller",
+					StartedAt: time.Now().Add(-time.Second),
+				}, nil
+			},
+			GetMessagesMock: func(ctx context.Context, id string) ([]model.Message, error) {
+				return nil, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				return nil, nil
+			},
+		}
+		mwr := &repotest.MockWordRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+				return model.Word{ID: "word-1", Word: "ice cream", Hint: "🍨"}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
+
+		gs, err := uc.GameState(context.Background(), "game-1", "p-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if gs.TellerNickname != "Announcer" {
+			t.Errorf("TellerNickname = %q, want Announcer", gs.TellerNickname)
+		}
+		if gs.LetterCount != 8 {
+			t.Errorf("LetterCount = %d, want 8", gs.LetterCount)
+		}
+		if gs.WordCount != 2 {
+			t.Errorf("WordCount = %d, want 2", gs.WordCount)
+		}
+		var tellerMarked bool
+		for _, e := range gs.Leaderboard {
+			if e.PlayerID == "p-teller" {
+				tellerMarked = e.IsTeller
+			}
+			if e.PlayerID == "p-1" && e.IsTeller {
+				t.Errorf("guesser marked as teller")
+			}
+		}
+		if !tellerMarked {
+			t.Errorf("teller not marked IsTeller on leaderboard")
+		}
+	})
+
+	t.Run("awaiting pick still exposes teller nickname", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{
+					{ID: "p-1", Nickname: "Guesser", State: model.ActivePlayerState},
+					{ID: "p-teller", Nickname: "Announcer", State: model.ActivePlayerState},
+				}, nil
+			},
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: "turn-1", TellerID: "p-teller"}, nil
+			},
+			GetMessagesMock: func(ctx context.Context, id string) ([]model.Message, error) {
+				return nil, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				return nil, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
+
+		gs, err := uc.GameState(context.Background(), "game-1", "p-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !gs.AwaitingPick {
+			t.Fatal("expected AwaitingPick")
+		}
+		if gs.TellerNickname != "Announcer" {
+			t.Errorf("TellerNickname = %q, want Announcer", gs.TellerNickname)
+		}
+	})
 
 	t.Run("should order messages from newest to oldest", func(t *testing.T) {
 		expectedGameID := "some-game-id"
@@ -1478,6 +1575,41 @@ func TestLeaderboard(t *testing.T) {
 			if e != want[i] {
 				t.Errorf("entry[%d]: got %+v, want %+v", i, e, want[i])
 			}
+		}
+	})
+
+	t.Run("marks current teller on leaderboard", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{
+					{ID: "p-1", Nickname: "Nick1", State: model.ActivePlayerState},
+					{ID: "p-2", Nickname: "Nick2", State: model.ActivePlayerState},
+				}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				return nil, nil
+			},
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{TellerID: "p-2", StartedAt: time.Now().Add(-time.Second), ID: "latest"}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
+
+		entries, err := uc.Leaderboard(context.Background(), gameID, "p-1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(entries) != 2 {
+			t.Fatalf("entries: got %d, want 2", len(entries))
+		}
+		if entries[0].IsTeller {
+			t.Errorf("p-1 IsTeller = true, want false")
+		}
+		if !entries[1].IsTeller {
+			t.Errorf("p-2 IsTeller = false, want true")
+		}
+		if !entries[1].GuessedWord {
+			t.Errorf("teller GuessedWord = false, want true")
 		}
 	})
 
