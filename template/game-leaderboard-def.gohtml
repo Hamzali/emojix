@@ -1,21 +1,24 @@
 {{ define "leaderboard" }}
   {{ if .Leaderboard }}
-  <ul>
+  <ul class="player-list">
     {{ range .Leaderboard }}
-      <li>
-        <span>
+      <li class="player{{ if .Me }} is-me{{ end }}{{ if .GuessedWord }} is-guessed{{ end }}">
+        <span class="player-name">
           {{ if .Me }}
             <strong>{{ .Nickname }}</strong>
+            <span class="player-you">you</span>
           {{ else }}
             {{ .Nickname }}
           {{ end }}
         </span>
-        <span>{{ if .GuessedWord }}✅{{ end }}</span>
+        <span class="player-status" aria-label="{{ if .GuessedWord }}guessed{{ else }}still guessing{{ end }}">
+          {{ if .GuessedWord }}✓{{ end }}
+        </span>
         <span class="score">{{ .Score }}</span>
       </li>
     {{ end }}
   </ul>
   {{ else }}
-  <p class="empty">Waiting for players…</p>
+  <p class="empty">Waiting for players</p>
   {{ end }}
 {{ end }}

@@ -1,10 +1,12 @@
 {{ define "game-msg" }}
-  <p>
-    <span>{{ .Nickname }}</span>
-    {{ if .Me }}
-      <strong>{{ .Content }}</strong>
-    {{ else }}
-      {{ .Content }}
-    {{ end }}
+  <p class="msg{{ if .Me }} is-me{{ end }}">
+    <span class="msg-name">{{ .Nickname }}</span>
+    <span class="msg-body">
+      {{ if .Me }}
+        <strong>{{ .Content }}</strong>
+      {{ else }}
+        {{ .Content }}
+      {{ end }}
+    </span>
   </p>
 {{ end }}

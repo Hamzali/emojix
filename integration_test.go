@@ -194,7 +194,7 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 	if strings.Contains(page, "Apple") {
 		t.Errorf("game page leaks the unmasked word")
 	}
-	if got := strings.Count(page, "<p>*</p>"); got != 5 {
+	if got := strings.Count(page, `class="letter is-blank"`); got != 5 {
 		t.Errorf("masked word: got %d mask chars, want 5 (Apple)", got)
 	}
 	if !strings.Contains(page, guesserNick) {

@@ -1,5 +1,11 @@
 {{ define "game-word" }}
   {{ range .MaskedWord }}
-    <p>{{ . }}</p>
+    {{ if or (eq . "*") (eq . "_") }}
+      <span class="letter is-blank" aria-hidden="true"></span>
+    {{ else if eq . " " }}
+      <span class="letter is-space" aria-hidden="true"></span>
+    {{ else }}
+      <span class="letter">{{ . }}</span>
+    {{ end }}
   {{ end }}
 {{ end }}

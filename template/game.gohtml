@@ -3,14 +3,20 @@
 {{ end }}
 
 {{ define "base" }}
+  {{ $hasGuessed := false }}
+  {{ range .Leaderboard }}
+    {{ if and .Me .GuessedWord }}{{ $hasGuessed = true }}{{ end }}
+  {{ end }}
+
   <div class="root" hx-ext="sse" sse-connect="/game/{{ .GameID }}/sse">
     <aside class="sidebar">
       <div class="window leaderboard">
+        <div class="bar">Players</div>
         <div class="actions">
-          <a class="btn" href="/">Home</a>
+          <a class="btn btn-ghost" href="/">Home</a>
           <button
             type="button"
-            class="btn"
+            class="btn btn-copy"
             id="copy-game-id"
             data-game-id="{{ .GameID }}"
           >
@@ -39,53 +45,78 @@
                   <form method="post" action="/game/{{ $.GameID }}/pick">
                     <input type="hidden" name="word-id" value="{{ .ID }}" />
                     <button type="submit" class="word-option">
-                      <span class="word-option-text">{{ .Word }}</span>
-                      <span class="word-option-hint">{{ .Hint }}</span>
+                      <span class="word-option-index" aria-hidden="true"></span>
+                      <span class="word-option-body">
+                        <span class="word-option-text">{{ .Word }}</span>
+                        <span class="word-option-hint">{{ .Hint }}</span>
+                      </span>
                     </button>
                   </form>
                 {{ end }}
               </div>
             {{ else }}
-              <p class="pick-wait">Waiting for the teller to pick a word…</p>
+              <div class="state-block">
+                <p class="state-emoji" aria-hidden="true">⏳</p>
+                <p class="pick-wait">Waiting for the teller to pick a word</p>
+              </div>
             {{ end }}
           {{ else }}
-          <div class="emoji-display">
-            {{ .EmojiHint }}
-          </div>
-          <div class="turn-timer">
-            <div class="turn-timer-bar" data-start="{{ .TurnStartedAt.UnixMilli }}"></div>
-          </div>
-          <div
-            class="word-display"
-            hx-get="/game/{{ .GameID }}/word"
-            hx-trigger="guessed from:body"
-          >
-            {{ template "game-word" . }}
-          </div>
-          {{ if not .IsTeller }}
-          <form
-            class="guess-form"
-            hx-post="/game/{{ .GameID }}/guess"
-            hx-target="#messages"
-            hx-swap="afterbegin"
-            hx-on:htmx:after-request="event.target.reset()"
-          >
-            <textarea
-              name="content"
-              placeholder="Type your guess…"
-              rows="1"
-              required
-            ></textarea>
-            <button type="submit">Guess</button>
-          </form>
-          {{ else }}
-            <p class="teller-note">You're the teller — others are guessing.</p>
-          {{ end }}
+            <div class="emoji-display" aria-label="Emoji hint">
+              {{ .EmojiHint }}
+            </div>
+
+            <div
+              class="turn-timer"
+              role="progressbar"
+              aria-label="Turn timer"
+              aria-valuemin="0"
+              aria-valuemax="60"
+            >
+              <div
+                class="turn-timer-bar"
+                data-start="{{ .TurnStartedAt.UnixMilli }}"
+              ></div>
+            </div>
+
+            <div
+              class="word-display"
+              hx-get="/game/{{ .GameID }}/word"
+              hx-trigger="guessed from:body"
+              aria-label="Word"
+            >
+              {{ template "game-word" . }}
+            </div>
+
+            {{ if .IsTeller }}
+              <p class="teller-note">You're the teller. Others are guessing.</p>
+            {{ else if $hasGuessed }}
+              <p class="guessed-note">You got it.</p>
+            {{ else }}
+              <form
+                class="guess-form"
+                hx-post="/game/{{ .GameID }}/guess"
+                hx-target="#messages"
+                hx-swap="afterbegin"
+                hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
+              >
+                <label class="sr-only" for="guess-input">Your guess</label>
+                <textarea
+                  id="guess-input"
+                  name="content"
+                  placeholder="Type your guess"
+                  rows="1"
+                  required
+                  autocomplete="off"
+                ></textarea>
+                <button type="submit" class="btn-primary">Guess</button>
+              </form>
+            {{ end }}
           {{ end }}
         </div>
       </div>
 
       <div class="window chat-panel">
+        <div class="bar">Chat</div>
         <div class="window-content">
           <section
             id="messages"
@@ -102,15 +133,18 @@
             hx-post="/game/{{ .GameID }}/message"
             hx-target="#messages"
             hx-swap="afterbegin"
-            hx-on:htmx:after-request="event.target.reset()"
+            hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
           >
+            <label class="sr-only" for="chat-input">Message</label>
             <textarea
+              id="chat-input"
               name="content"
-              placeholder="Send a message…"
+              placeholder="Say something"
               rows="1"
               required
+              autocomplete="off"
             ></textarea>
-            <button type="submit">Send</button>
+            <button type="submit" class="btn-chat">Send</button>
           </form>
         </div>
       </div>
@@ -137,7 +171,9 @@
             }, 1500);
           } catch (_) {
             btn.textContent = "Copy failed";
-            setTimeout(() => { btn.textContent = label; }, 1500);
+            setTimeout(() => {
+              btn.textContent = label;
+            }, 1500);
           }
         });
       })();
@@ -145,6 +181,7 @@
       (function initTimer() {
         const TURN_DURATION = 60000;
         const bar = document.querySelector(".turn-timer-bar");
+        const track = document.querySelector(".turn-timer");
         if (!bar) return;
 
         const startMs = parseInt(bar.dataset.start, 10);
@@ -154,6 +191,9 @@
           const remaining = Math.max(0, TURN_DURATION - (Date.now() - startMs));
           const fraction = remaining / TURN_DURATION;
           bar.style.width = fraction * 100 + "%";
+          if (track) {
+            track.setAttribute("aria-valuenow", String(Math.ceil(remaining / 1000)));
+          }
 
           if (fraction > 0.5) {
             bar.style.backgroundColor = "var(--ui-green)";
@@ -168,6 +208,18 @@
 
         requestAnimationFrame(update);
       })();
+
+      // Hide guess form once the word fully reveals for this player.
+      document.body.addEventListener("htmx:afterSwap", (e) => {
+        if (!e.detail.target.classList.contains("word-display")) return;
+        if (e.detail.target.querySelector(".is-blank")) return;
+        const form = document.querySelector(".guess-form");
+        if (!form) return;
+        const note = document.createElement("p");
+        note.className = "guessed-note";
+        note.textContent = "You got it.";
+        form.replaceWith(note);
+      });
     </script>
   </div>
 {{ end }}

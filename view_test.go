@@ -65,7 +65,7 @@ func TestRenderEveryTemplate(t *testing.T) {
 		},
 		{
 			name:     "renderGameWord",
-			contains: "_",
+			contains: "letter is-blank",
 			render: func(buf *bytes.Buffer) error {
 				return view.renderGameWord(buf, GameWordViewParam{MaskedWord: []string{"_", "_", "_", "_"}})
 			},

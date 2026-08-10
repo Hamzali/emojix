@@ -1,7 +1,12 @@
+{{ define "styles" }}
+  <link rel="stylesheet" href="/static/style/game.css" />
+{{ end }}
+
 {{ define "base" }}
-  <div class="page-center">
-    <h1>Next turn</h1>
-    <h2 id="counter">5</h2>
+  <div class="page-center loading-page">
+    <p class="loading-marks" aria-hidden="true">🎉</p>
+    <h1 class="loading-title">Next turn</h1>
+    <p id="counter" class="countdown" aria-live="polite">5</p>
     <p class="muted">Hang tight while the board resets.</p>
     <a class="btn" href="/game/{{ .GameID }}">Open now</a>
   </div>
@@ -12,7 +17,7 @@
       const n = Number(el.innerText);
 
       if (n === 0 || n > 5 || Number.isNaN(n) || !Number.isFinite(n)) {
-        el.innerText = "Opening…";
+        el.innerText = "…";
         setTimeout(() => location.replace("/game/{{.GameID}}"), 100);
         return;
       }
