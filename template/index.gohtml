@@ -5,40 +5,46 @@
 {{ define "base" }}
   <div class="root">
     <header class="header">
+      <p class="brand-marks" aria-hidden="true">🎭 🎯 💬</p>
       <h1 class="brand-title">Emojix</h1>
-      <p class="tagline">pick, tell, guess</p>
+      <p class="tagline">Pick a word. Tell it with emojis. Guess together.</p>
     </header>
 
     <main class="content">
-      <div class="window">
-        <div class="bar">Welcome, <em>{{ .Nickname }}</em></div>
+      <div class="window lobby">
+        <div class="bar">
+          Welcome, <em>{{ .Nickname }}</em>
+        </div>
 
         <div class="window-content">
-          <div class="form">
-            <form method="post" action="/game/new" class="new-game-form">
+          <form method="post" action="/game/new" class="lobby-form">
+            <div class="field">
               <label for="list-id">Word list</label>
               <select id="list-id" name="list-id" required>
                 {{ range .Lists }}
                   <option value="{{ .ID }}">{{ .Title }}</option>
                 {{ end }}
               </select>
-              <button type="submit">New game</button>
-            </form>
+            </div>
+            <button type="submit" class="btn-primary">New game</button>
+          </form>
 
-            <div class="form-divider" aria-hidden="true">or</div>
+          <div class="form-divider" aria-hidden="true"><span>or</span></div>
 
-            <form method="get" action="/game/join" class="join-form">
+          <form method="get" action="/game/join" class="lobby-form">
+            <div class="field">
               <label for="game-id">Game code</label>
               <input
                 id="game-id"
                 name="game-id"
                 placeholder="Paste game code"
                 autocomplete="off"
+                spellcheck="false"
                 required
               />
-              <button type="submit">Join game</button>
-            </form>
-          </div>
+            </div>
+            <button type="submit" class="btn-secondary">Join game</button>
+          </form>
         </div>
       </div>
     </main>
