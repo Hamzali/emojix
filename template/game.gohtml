@@ -10,144 +10,127 @@
 
   <div class="root" hx-ext="sse" sse-connect="/game/{{ .GameID }}/sse">
     <aside class="sidebar">
-      <div class="window leaderboard">
-        <div class="bar">Players</div>
-        <div class="actions">
-          <a class="btn btn-ghost" href="/">Home</a>
-          <button
-            type="button"
-            class="btn btn-copy"
-            id="copy-game-id"
-            data-game-id="{{ .GameID }}"
-          >
-            Copy code
-          </button>
-        </div>
-        <div class="window-content">
-          <section
-            hx-get="/game/{{ .GameID }}/leaderboard"
-            hx-trigger="sse:left,sse:join,sse:guessed,guessed from:body"
-          >
-            {{ template "leaderboard" . }}
-          </section>
-        </div>
+      <div class="actions">
+        <a class="btn btn-ghost" href="/">Home</a>
+        <button
+          type="button"
+          class="btn btn-copy"
+          id="copy-game-id"
+          data-game-id="{{ .GameID }}"
+        >
+          Copy code
+        </button>
       </div>
+      <section
+        class="players"
+        hx-get="/game/{{ .GameID }}/leaderboard"
+        hx-trigger="sse:left,sse:join,sse:guessed,guessed from:body"
+      >
+        {{ template "leaderboard" . }}
+      </section>
     </aside>
 
     <main class="main">
-      <div class="window word-panel">
-        <div class="window-content">
-          {{ if .AwaitingPick }}
-            {{ if .IsTeller }}
-              <p class="pick-prompt">Pick a word to tell</p>
-              <div class="word-options">
-                {{ range .WordOptions }}
-                  <form method="post" action="/game/{{ $.GameID }}/pick">
-                    <input type="hidden" name="word-id" value="{{ .ID }}" />
-                    <button type="submit" class="word-option">
-                      <span class="word-option-index" aria-hidden="true"></span>
-                      <span class="word-option-body">
-                        <span class="word-option-text">{{ .Word }}</span>
-                        <span class="word-option-hint">{{ .Hint }}</span>
-                      </span>
-                    </button>
-                  </form>
-                {{ end }}
-              </div>
-            {{ else }}
-              <div class="state-block">
-                <p class="state-emoji" aria-hidden="true">⏳</p>
-                <p class="pick-wait">Waiting for the teller to pick a word</p>
-              </div>
-            {{ end }}
+      <section class="play">
+        {{ if .AwaitingPick }}
+          {{ if .IsTeller }}
+            <p class="pick-prompt">Pick a word to tell</p>
+            <div class="word-options">
+              {{ range .WordOptions }}
+                <form method="post" action="/game/{{ $.GameID }}/pick">
+                  <input type="hidden" name="word-id" value="{{ .ID }}" />
+                  <button type="submit" class="word-option">
+                    <span class="word-option-text">{{ .Word }}</span>
+                    <span class="word-option-hint">{{ .Hint }}</span>
+                  </button>
+                </form>
+              {{ end }}
+            </div>
           {{ else }}
-            <div class="emoji-display" aria-label="Emoji hint">
-              {{ .EmojiHint }}
-            </div>
+            <p class="pick-wait">Waiting for the teller to pick a word</p>
+          {{ end }}
+        {{ else }}
+          <div class="emoji-display" aria-label="Emoji hint">{{ .EmojiHint }}</div>
 
+          <div
+            class="turn-timer"
+            role="progressbar"
+            aria-label="Turn timer"
+            aria-valuemin="0"
+            aria-valuemax="60"
+          >
             <div
-              class="turn-timer"
-              role="progressbar"
-              aria-label="Turn timer"
-              aria-valuemin="0"
-              aria-valuemax="60"
-            >
-              <div
-                class="turn-timer-bar"
-                data-start="{{ .TurnStartedAt.UnixMilli }}"
-              ></div>
-            </div>
+              class="turn-timer-bar"
+              data-start="{{ .TurnStartedAt.UnixMilli }}"
+            ></div>
+          </div>
 
-            <div
-              class="word-display"
-              hx-get="/game/{{ .GameID }}/word"
-              hx-trigger="guessed from:body"
-              aria-label="Word"
-            >
-              {{ template "game-word" . }}
-            </div>
+          <div
+            class="word-display"
+            hx-get="/game/{{ .GameID }}/word"
+            hx-trigger="guessed from:body"
+            aria-label="Word"
+          >
+            {{ template "game-word" . }}
+          </div>
 
-            {{ if .IsTeller }}
-              <p class="teller-note">You're the teller. Others are guessing.</p>
-            {{ else if $hasGuessed }}
-              <p class="guessed-note">You got it.</p>
-            {{ else }}
-              <form
-                class="guess-form"
-                hx-post="/game/{{ .GameID }}/guess"
-                hx-target="#messages"
-                hx-swap="afterbegin"
-                hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
-              >
-                <label class="sr-only" for="guess-input">Your guess</label>
-                <textarea
-                  id="guess-input"
-                  name="content"
-                  placeholder="Type your guess"
-                  rows="1"
-                  required
-                  autocomplete="off"
-                ></textarea>
-                <button type="submit" class="btn-primary">Guess</button>
-              </form>
-            {{ end }}
+          {{ if .IsTeller }}
+            <p class="teller-note">You're the teller. Others are guessing.</p>
+          {{ else if $hasGuessed }}
+            <p class="guessed-note">You got it.</p>
+          {{ else }}
+            <form
+              class="guess-form"
+              hx-post="/game/{{ .GameID }}/guess"
+              hx-target="#messages"
+              hx-swap="afterbegin"
+              hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
+            >
+              <label class="sr-only" for="guess-input">Your guess</label>
+              <textarea
+                id="guess-input"
+                name="content"
+                placeholder="Type your guess"
+                rows="1"
+                required
+                autocomplete="off"
+              ></textarea>
+              <button type="submit" class="btn-primary">Guess</button>
+            </form>
+          {{ end }}
+        {{ end }}
+      </section>
+
+      <section class="chat">
+        <div
+          id="messages"
+          class="messages"
+          sse-swap="msg"
+          hx-swap="afterbegin"
+        >
+          {{ range .Messages }}
+            {{ template "game-msg" . }}
           {{ end }}
         </div>
-      </div>
-
-      <div class="window chat-panel">
-        <div class="bar">Chat</div>
-        <div class="window-content">
-          <section
-            id="messages"
-            class="messages"
-            sse-swap="msg"
-            hx-swap="afterbegin"
-          >
-            {{ range .Messages }}
-              {{ template "game-msg" . }}
-            {{ end }}
-          </section>
-          <form
-            class="chat-form"
-            hx-post="/game/{{ .GameID }}/message"
-            hx-target="#messages"
-            hx-swap="afterbegin"
-            hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
-          >
-            <label class="sr-only" for="chat-input">Message</label>
-            <textarea
-              id="chat-input"
-              name="content"
-              placeholder="Say something"
-              rows="1"
-              required
-              autocomplete="off"
-            ></textarea>
-            <button type="submit" class="btn-chat">Send</button>
-          </form>
-        </div>
-      </div>
+        <form
+          class="chat-form"
+          hx-post="/game/{{ .GameID }}/message"
+          hx-target="#messages"
+          hx-swap="afterbegin"
+          hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
+        >
+          <label class="sr-only" for="chat-input">Message</label>
+          <textarea
+            id="chat-input"
+            name="content"
+            placeholder="Say something"
+            rows="1"
+            required
+            autocomplete="off"
+          ></textarea>
+          <button type="submit" class="btn-chat">Send</button>
+        </form>
+      </section>
     </main>
 
     <div hx-trigger="sse:turnended"></div>
@@ -209,7 +192,6 @@
         requestAnimationFrame(update);
       })();
 
-      // Hide guess form once the word fully reveals for this player.
       document.body.addEventListener("htmx:afterSwap", (e) => {
         if (!e.detail.target.classList.contains("word-display")) return;
         if (e.detail.target.querySelector(".is-blank")) return;
