@@ -34,7 +34,8 @@ type EmojixUsecase interface {
 	InitGame(ctx context.Context, userID string, listID string) (model.Game, error)
 	JoinGame(ctx context.Context, gameID string, userID string) error
 	PickWord(ctx context.Context, gameID string, userID string, wordID string) error
-	Guess(ctx context.Context, gameID string, userID string, word string) error
+	// Guess records a guess. correct is true when the guess matches the word.
+	Guess(ctx context.Context, gameID string, userID string, word string) (correct bool, err error)
 	Message(ctx context.Context, gameID string, userID string, word string) error
 	GameState(ctx context.Context, gameID string, userID string) (model.GameState, error)
 	GameUpdates(ctx context.Context, gameID string, userID string, handler GameUpdateHandler) error
@@ -120,12 +121,19 @@ func (e *emojixUsecase) KickInactiveUser(ctx context.Context, gameID, userID str
 	return err
 }
 
-func maskContent(content string, word string, guessedWord bool) string {
-	if strings.EqualFold(word, content) && !guessedWord {
-		return "***"
-	}
+// GotItMessage is the public system line shown for a correct guess so the raw
+// word is never leaked to unsolved players (or anyone via chat history).
+func GotItMessage(nickname string) string {
+	return nickname + " got it!"
+}
 
-	return content
+// MaskMessage rewrites a stored chat/guess line for display. Correct guesses
+// become a system announcement for everyone.
+func MaskMessage(content, word, nickname string) (display string, isSystem bool) {
+	if strings.EqualFold(content, word) {
+		return GotItMessage(nickname), true
+	}
+	return content, false
 }
 
 const turnDuration = time.Second * 60
@@ -234,24 +242,19 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 	gameState.TurnEnded = allGuessed || turnTimedOut
 	gameState.Word = gameWord
 
-	// prepare messages
+	// prepare messages (repo order is oldest→newest; keep newest at bottom)
 	gameMessages := []model.GameStateMessage{}
 	for _, msg := range messages {
-
 		le := leaderboardEntryMap[msg.PlayerID]
+		display, isSystem := MaskMessage(msg.Content, word.Word, le.Nickname)
 		gm := model.GameStateMessage{
 			Me:       le.Me,
-			Content:  msg.Content,
+			Content:  display,
 			Nickname: le.Nickname,
+			IsSystem: isSystem,
 		}
-
-		seen := currPlayerEntry.GuessedWord || gameState.IsTeller
-		gm.Content = maskContent(gm.Content, word.Word, seen)
-
 		gameMessages = append(gameMessages, gm)
 	}
-	// newest message at top
-	slices.Reverse(gameMessages)
 	gameState.Messages = gameMessages
 
 	return gameState, nil
@@ -449,6 +452,7 @@ type GameMsgNotification struct {
 	UserID   string
 	Nickname string
 	Content  string
+	IsSystem bool
 }
 
 func (gmn *GameMsgNotification) GetType() string {
@@ -456,20 +460,22 @@ func (gmn *GameMsgNotification) GetType() string {
 }
 
 func (gmn *GameMsgNotification) GetData() string {
+	if gmn.IsSystem {
+		return fmt.Sprintf("%s,%s,%s,1", gmn.UserID, gmn.Nickname, gmn.Content)
+	}
 	return fmt.Sprintf("%s,%s,%s", gmn.UserID, gmn.Nickname, gmn.Content)
 }
 
 func (gmn *GameMsgNotification) ParseData(data string) error {
-
 	items := strings.Split(data, ",")
-
-	if len(items) != 3 {
+	if len(items) < 3 || len(items) > 4 {
 		return errors.New("invalid msg content")
 	}
 
 	gmn.UserID = items[0]
 	gmn.Nickname = items[1]
 	gmn.Content = items[2]
+	gmn.IsSystem = len(items) == 4 && items[3] == "1"
 
 	return nil
 }
@@ -498,34 +504,34 @@ func (gmn *GameTurnEndNotification) GetData() string {
 	return ""
 }
 
-func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string, content string) error {
+func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string, content string) (bool, error) {
 	currPlayer, err := e.userRepo.FindByID(ctx, userID)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	turn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	if turn.WordID == "" {
-		return errors.New("turn has not started yet")
+		return false, errors.New("turn has not started yet")
 	}
 	// Teller already knows the word; ignore their guesses.
 	if turn.TellerID == userID {
-		return errors.New("teller cannot guess")
+		return false, errors.New("teller cannot guess")
 	}
 	turnID := turn.ID
 
 	word, err := e.wordRepo.FindByID(ctx, turn.WordID)
 	if err != nil {
-		return err
+		return false, err
 	}
 	gameWord := word.Word
 
 	uow, err := e.unitOfWorkFactory.New(ctx)
 	if err != nil {
-		return err
+		return false, err
 	}
 	defer uow.Rollback()
 
@@ -533,7 +539,7 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 
 	msg, err := gameRepo.SendMessage(ctx, gameID, turnID, userID, content)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// TODO: make fancier word comparison
@@ -542,21 +548,21 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 		// Only publish after a successful commit so a failed commit does not
 		// broadcast a chat message that was never persisted.
 		if err = uow.Commit(); err != nil {
-			return err
+			return false, err
 		}
-		go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, content})
-		return nil
+		go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{UserID: userID, Nickname: currPlayer.Nickname, Content: content})
+		return false, nil
 	}
 
 	// check if the turn is ended
 	players, err := gameRepo.GetPlayers(ctx, gameID)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	scores, err := gameRepo.GetScores(ctx, gameID)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// Duplicate-correct-guess: this user already scored on this turn. Idempotent
@@ -564,7 +570,7 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 	// SendMessage above is still committed so the chat record stays consistent.
 	for _, s := range scores {
 		if s.PlayerID == userID && s.TurnID == turnID {
-			return uow.Commit()
+			return true, uow.Commit()
 		}
 	}
 
@@ -595,7 +601,7 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 
 	err = gameRepo.AddScore(ctx, gameID, userID, msg.ID, turnID, point)
 	if err != nil {
-		return err
+		return false, err
 	}
 
 	// Teller scores per correct guess (more solvers → more teller points over the turn).
@@ -603,24 +609,26 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 	if turn.TellerID != "" {
 		err = gameRepo.AddScore(ctx, gameID, turn.TellerID, msg.ID, turnID, tellerPointsPerCorrectGuess)
 		if err != nil {
-			return err
+			return false, err
 		}
 	}
 
 	err = uow.Commit()
 	if err != nil {
-		return err
+		return false, err
 	}
 
-	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, "***"})
+	systemLine := GotItMessage(currPlayer.Nickname)
+	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{
+		UserID: userID, Nickname: currPlayer.Nickname, Content: systemLine, IsSystem: true,
+	})
 	go e.gameNotifier.Pub(gameID, userID, &GameCorrectGuessNotification{userID, currPlayer.Nickname})
 
 	if totalGuessers == e.countGuessers(activePlayers, turn.TellerID) {
 		e.gameLoop.EndGameTurn(gameID)
 	}
 
-	return nil
-
+	return true, nil
 }
 
 func (e *emojixUsecase) onTurnEnd(ctx context.Context, gameID string) {
@@ -707,7 +715,7 @@ func (e *emojixUsecase) Message(ctx context.Context, gameID string, userID strin
 		return err
 	}
 
-	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{userID, currPlayer.Nickname, content})
+	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{UserID: userID, Nickname: currPlayer.Nickname, Content: content})
 
 	return nil
 }

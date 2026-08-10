@@ -36,6 +36,33 @@ func assertCalledWith(t *testing.T, paramName string, expectedParam any, testPar
 	}
 }
 
+func TestGotItMessage(t *testing.T) {
+	if got, want := usecase.GotItMessage("Ada"), "Ada got it!"; got != want {
+		t.Errorf("GotItMessage = %q, want %q", got, want)
+	}
+}
+
+func TestMaskMessage(t *testing.T) {
+	t.Run("correct guess becomes system line", func(t *testing.T) {
+		got, sys := usecase.MaskMessage("Secret", "secret", "Ada")
+		if !sys {
+			t.Fatal("expected isSystem")
+		}
+		if got != "Ada got it!" {
+			t.Errorf("display = %q", got)
+		}
+	})
+	t.Run("normal chat unchanged", func(t *testing.T) {
+		got, sys := usecase.MaskMessage("hello", "secret", "Ada")
+		if sys {
+			t.Fatal("expected not system")
+		}
+		if got != "hello" {
+			t.Errorf("display = %q", got)
+		}
+	})
+}
+
 // assertGameState reports every mismatch between the expected and actual
 // GameState, not just the first one.
 func assertGameState(t *testing.T, expectedGameState model.GameState, gameState model.GameState) {
@@ -60,6 +87,7 @@ func assertGameState(t *testing.T, expectedGameState model.GameState, gameState 
 		assertValue(t, fmt.Sprintf("Message[%d].Nickname", i), expectedMsg.Nickname, m.Nickname)
 		assertValue(t, fmt.Sprintf("Message[%d].Me", i), expectedMsg.Me, m.Me)
 		assertValue(t, fmt.Sprintf("Message[%d].Content", i), expectedMsg.Content, m.Content)
+		assertValue(t, fmt.Sprintf("Message[%d].IsSystem", i), expectedMsg.IsSystem, m.IsSystem)
 	}
 
 	assertValue(t, "Leaderboard Length", len(expectedGameState.Leaderboard), len(gameState.Leaderboard))
@@ -207,7 +235,7 @@ func TestGameState(t *testing.T) {
 			LetterCount:   8,
 			WordCount:     2,
 			Messages: []model.GameStateMessage{
-				{Nickname: "Player1", Me: true, Content: "Some Word"},
+				{Nickname: "Player1", Me: true, Content: "Player1 got it!", IsSystem: true},
 			},
 			Leaderboard: []model.LeaderboardEntry{
 				{PlayerID: "p-1", Nickname: "Player1", Me: true, GuessedWord: true, Score: 10},
@@ -216,6 +244,61 @@ func TestGameState(t *testing.T) {
 			},
 		}, gameState)
 
+	})
+
+	t.Run("correct guess is system line for unsolved viewer", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{
+					{ID: "p-1", Nickname: "Player1"},
+					{ID: "p-2", Nickname: "Player2"},
+				}, nil
+			},
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{TellerID: "teller-other", StartedAt: time.Now().Add(-time.Second), ID: "last-turn-id", WordID: "some-word-id", CreatedAt: time.Now()}, nil
+			},
+			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+				return []model.Score{
+					{PlayerID: "p-1", Score: 10, TurnID: "last-turn-id", GameID: "some-game-id", MessageID: "guess-msg-id"},
+				}, nil
+			},
+			GetMessagesMock: func(ctx context.Context, id string) ([]model.Message, error) {
+				return []model.Message{
+					{ID: "guess-msg-id", PlayerID: "p-1", Content: "Some Word"},
+					{ID: "chat-1", PlayerID: "p-2", Content: "hello"},
+				}, nil
+			},
+		}
+		mwr := &repotest.MockWordRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+				return model.Word{ID: "some-word-id", Word: "Some Word", Hint: "Some Hint"}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
+
+		// p-2 has not guessed — must not see the raw word.
+		gameState, err := uc.GameState(context.Background(), "some-game-id", "p-2")
+		if err != nil {
+			t.Fatal(err)
+		}
+		assertGameState(t, model.GameState{
+			GameID:        "some-game-id",
+			CurrentUserID: "p-2",
+			TurnID:        "last-turn-id",
+			TurnEnded:     false,
+			Word:          "**** ****",
+			Hint:          "Some Hint",
+			LetterCount:   8,
+			WordCount:     2,
+			Messages: []model.GameStateMessage{
+				{Nickname: "Player1", Me: false, Content: "Player1 got it!", IsSystem: true},
+				{Nickname: "Player2", Me: true, Content: "hello", IsSystem: false},
+			},
+			Leaderboard: []model.LeaderboardEntry{
+				{PlayerID: "p-1", Nickname: "Player1", Me: false, GuessedWord: true, Score: 10},
+				{PlayerID: "p-2", Nickname: "Player2", Me: true, GuessedWord: false, Score: 0},
+			},
+		}, gameState)
 	})
 
 	// NOTE: the timeout branch of TurnEnded is covered separately by
@@ -310,7 +393,7 @@ func TestGameState(t *testing.T) {
 		}
 	})
 
-	t.Run("should order messages from newest to oldest", func(t *testing.T) {
+	t.Run("should order messages oldest to newest", func(t *testing.T) {
 		expectedGameID := "some-game-id"
 		mgr := &repotest.MockGameRepository{
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
@@ -344,14 +427,14 @@ func TestGameState(t *testing.T) {
 			t.Fatal(err)
 		}
 
-		// GameState reverses the repo message order so newest is first.
+		// Newest at bottom (repo order preserved).
 		got := []string{}
 		for _, m := range gameState.Messages {
 			got = append(got, m.Content)
 		}
-		want := []string{"new", "mid", "old"}
+		want := []string{"old", "mid", "new"}
 		if fmt.Sprintf("%v", got) != fmt.Sprintf("%v", want) {
-			t.Errorf("messages: got %v, want %v (newest first)", got, want)
+			t.Errorf("messages: got %v, want %v (newest last)", got, want)
 		}
 	})
 
@@ -1079,8 +1162,12 @@ func TestGuess(t *testing.T) {
 		gl := &servicetest.MockGameLoop{}
 		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
 
-		if err := uc.Guess(context.Background(), gameID, userID, "nope"); err != nil {
+		correct, err := uc.Guess(context.Background(), gameID, userID, "nope")
+		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		if correct {
+			t.Error("expected correct=false on wrong guess")
 		}
 		if !uow.CommitCalled {
 			t.Error("expected Commit to be called once on wrong guess")
@@ -1125,8 +1212,12 @@ func TestGuess(t *testing.T) {
 		gl := &servicetest.MockGameLoop{}
 		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
 
-		if err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
+		correct, err := uc.Guess(context.Background(), gameID, userID, theWord)
+		if err != nil {
 			t.Fatalf("unexpected error: %v", err)
+		}
+		if !correct {
+			t.Error("expected correct=true")
 		}
 		// 3 active guessers (teller-other not in players), no prior → totalGuessers=1, coeff=3/1=3, point=30.
 		// Teller gets a flat bonus per correct guess.
@@ -1141,13 +1232,24 @@ func TestGuess(t *testing.T) {
 		}
 		pub := drainPub(t, pubCh, 2)
 		if notifByType(pub, "msg") == nil {
-			t.Error("expected a msg pub (masked ***)")
+			t.Error("expected a msg pub (system got it)")
 		}
 		if notifByType(pub, "guessed") == nil {
 			t.Error("expected a guessed pub")
 		}
-		if m := notifByType(pub, "msg"); m != nil && m.GetData() != userID+",Nick1,***" {
-			t.Errorf("masked msg data: got %q, want %q", m.GetData(), userID+",Nick1,***")
+		wantMsg := userID + ",Nick1," + usecase.GotItMessage("Nick1") + ",1"
+		if m := notifByType(pub, "msg"); m != nil && m.GetData() != wantMsg {
+			t.Errorf("system msg data: got %q, want %q", m.GetData(), wantMsg)
+		}
+		// ParseData round-trip preserves IsSystem.
+		if m := notifByType(pub, "msg"); m != nil {
+			parsed := &usecase.GameMsgNotification{}
+			if err := parsed.ParseData(m.GetData()); err != nil {
+				t.Fatalf("ParseData: %v", err)
+			}
+			if !parsed.IsSystem || parsed.Content != usecase.GotItMessage("Nick1") {
+				t.Errorf("parsed system msg: %+v", parsed)
+			}
 		}
 	})
 
@@ -1183,7 +1285,7 @@ func TestGuess(t *testing.T) {
 		}
 		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
 
-		if err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
+		if _, err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		select {
@@ -1223,7 +1325,7 @@ func TestGuess(t *testing.T) {
 		}
 		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
 
-		if err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
+		if _, err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		if !uow.CommitCalled {
@@ -1246,7 +1348,7 @@ func TestGuess(t *testing.T) {
 		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
 		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &servicetest.MockGameLoop{}, nil)
 
-		err := uc.Guess(context.Background(), gameID, userID, theWord)
+		_, err := uc.Guess(context.Background(), gameID, userID, theWord)
 		if err == nil {
 			t.Fatal("expected error from FindByID")
 		}
@@ -1271,7 +1373,7 @@ func TestGuess(t *testing.T) {
 		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
 		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &servicetest.MockGameLoop{}, nil)
 
-		err := uc.Guess(context.Background(), gameID, userID, theWord)
+		_, err := uc.Guess(context.Background(), gameID, userID, theWord)
 		if err == nil {
 			t.Fatal("expected error from GetLatestTurn")
 		}
@@ -1295,7 +1397,7 @@ func TestGuess(t *testing.T) {
 		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
 		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &servicetest.MockGameLoop{}, nil)
 
-		err := uc.Guess(context.Background(), gameID, userID, theWord)
+		_, err := uc.Guess(context.Background(), gameID, userID, theWord)
 		if err == nil {
 			t.Fatal("expected error from SendMessage")
 		}
@@ -1318,7 +1420,7 @@ func TestGuess(t *testing.T) {
 		uc, uow := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, &servicetest.MockGameLoop{}, commitErr)
 		_ = uow
 
-		err := uc.Guess(context.Background(), gameID, userID, "nope")
+		_, err := uc.Guess(context.Background(), gameID, userID, "nope")
 		if !errors.Is(err, commitErr) {
 			t.Fatalf("expected commitErr, got %v", err)
 		}
@@ -1355,7 +1457,7 @@ func TestGuess(t *testing.T) {
 		}
 		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), mgn, gl, nil)
 
-		if err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
+		if _, err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
 			t.Fatalf("unexpected error: %v", err)
 		}
 		select {

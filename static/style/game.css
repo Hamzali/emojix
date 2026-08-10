@@ -371,21 +371,28 @@
 
 .guess-form {
   display: flex;
+  flex-wrap: wrap;
   gap: var(--space-1);
   align-items: stretch;
   width: min(100%, 26rem);
 }
 
-.guess-form textarea {
+.guess-form input[type="text"] {
   flex: 1;
-  resize: none;
   min-height: 2.6rem;
-  field-sizing: content;
-  max-height: 6rem;
 }
 
 .guess-form button {
   white-space: nowrap;
+}
+
+.guess-flash {
+  flex: 1 0 100%;
+  margin: 0;
+  text-align: center;
+  font-weight: 800;
+  font-size: 0.85rem;
+  color: var(--ui-red);
 }
 
 .pick-prompt,
@@ -506,6 +513,16 @@
 .msg strong {
   color: var(--ui-orange);
   font-weight: 800;
+}
+
+.msg.is-system {
+  color: var(--text-muted);
+  font-style: italic;
+  font-weight: 700;
+}
+
+.msg.is-guess {
+  opacity: 0.75;
 }
 
 .chat-form {

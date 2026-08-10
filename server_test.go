@@ -747,8 +747,11 @@ func TestMessage_UsecaseError_500(t *testing.T) {
 
 // --- Guess -------------------------------------------------------------
 
-func TestGuess_SetsHxTriggerAndRendersGameMsg(t *testing.T) {
+func TestGuess_Correct_SetsHxTriggerAndRendersSystemMsg(t *testing.T) {
 	uc := newMockUsecase()
+	uc.GuessFn = func(ctx context.Context, gameID, userID, content string) (bool, error) {
+		return true, nil
+	}
 	view := &MockView{}
 	srv := newServer(uc, view)
 
@@ -774,18 +777,53 @@ func TestGuess_SetsHxTriggerAndRendersGameMsg(t *testing.T) {
 	if !got.Me {
 		t.Errorf("Me = false, want true")
 	}
-	if got.Content != "apple" {
-		t.Errorf("Content = %q, want apple", got.Content)
+	if !got.IsSystem {
+		t.Errorf("IsSystem = false, want true")
+	}
+	if want := "sillyCat got it!"; got.Content != want {
+		t.Errorf("Content = %q, want %q", got.Content, want)
 	}
 	if got.Nickname != "sillyCat" {
 		t.Errorf("Nickname = %q, want sillyCat", got.Nickname)
 	}
 }
 
+func TestGuess_Wrong_SetsWrongguessAndRendersGuessMsg(t *testing.T) {
+	uc := newMockUsecase()
+	uc.GuessFn = func(ctx context.Context, gameID, userID, content string) (bool, error) {
+		return false, nil
+	}
+	view := &MockView{}
+	srv := newServer(uc, view)
+
+	r := setGameID(
+		withSession(newReq("POST", "/game/g1/guess", strings.NewReader("content=nope")), "u1", "sillyCat"),
+		"g1",
+	)
+	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	w := httptest.NewRecorder()
+
+	srv.Guess(w, r)
+
+	if got := w.Header().Get("Hx-Trigger"); got != "wrongguess" {
+		t.Errorf("Hx-Trigger = %q, want wrongguess", got)
+	}
+	got := view.renderGameMsgLastParam
+	if !got.IsGuess {
+		t.Errorf("IsGuess = false, want true")
+	}
+	if got.IsSystem {
+		t.Errorf("IsSystem = true, want false")
+	}
+	if got.Content != "nope" {
+		t.Errorf("Content = %q, want nope", got.Content)
+	}
+}
+
 func TestGuess_UsecaseError_500(t *testing.T) {
 	uc := newMockUsecase()
-	uc.GuessFn = func(ctx context.Context, gameID, userID, content string) error {
-		return errSentinel
+	uc.GuessFn = func(ctx context.Context, gameID, userID, content string) (bool, error) {
+		return false, errSentinel
 	}
 	view := &MockView{}
 	srv := newServer(uc, view)
