@@ -33,6 +33,7 @@ type GamePageViewParam struct {
 	LetterCount    int
 	WordCount      int
 	WordOptions    []model.Word
+	TurnEnded      bool
 }
 
 type GameLoadingPageViewParam struct {

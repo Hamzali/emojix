@@ -32,7 +32,9 @@
 
     <div class="board">
       <section class="stage">
-        {{ if .AwaitingPick }}
+        {{ if .TurnEnded }}
+          <p class="pick-wait turn-wait">Next turn…</p>
+        {{ else if .AwaitingPick }}
           {{ if .IsTeller }}
             <p class="pick-prompt">Pick a word to tell</p>
             <div class="word-options">
@@ -169,111 +171,121 @@
       </section>
     </div>
 
-    <div hx-trigger="sse:turnended"></div>
+    <div
+      hidden
+      aria-hidden="true"
+      hx-get="/game/{{ .GameID }}"
+      hx-trigger="sse:turnended,sse:wordpicked,sse:newturn"
+      hx-select=".root"
+      hx-target="closest .root"
+      hx-swap="outerHTML"
+    ></div>
+
     <script>
-      document.body.addEventListener("sse:turnended", () => location.reload());
-      document.body.addEventListener("sse:wordpicked", () => location.reload());
-      document.body.addEventListener("sse:newturn", () => location.reload());
+      (function initGameRoot() {
+        const root = document.currentScript.closest(".root");
+        if (!root) return;
 
-      (function initCopy() {
-        const btn = document.getElementById("copy-game-id");
-        if (!btn) return;
-        const label = btn.textContent;
-        btn.addEventListener("click", async () => {
-          try {
-            const shareUrl = `${location.origin}/game/${btn.dataset.gameId}`;
-            await navigator.clipboard.writeText(shareUrl);
-            btn.textContent = "Copied";
-            btn.classList.add("is-copied");
-            setTimeout(() => {
-              btn.textContent = label;
-              btn.classList.remove("is-copied");
-            }, 1500);
-          } catch (_) {
-            btn.textContent = "Copy failed";
-            setTimeout(() => {
-              btn.textContent = label;
-            }, 1500);
-          }
-        });
-      })();
+        const btn = root.querySelector("#copy-game-id");
+        if (btn) {
+          const label = btn.textContent;
+          btn.addEventListener("click", async () => {
+            try {
+              const shareUrl = `${location.origin}/game/${btn.dataset.gameId}`;
+              await navigator.clipboard.writeText(shareUrl);
+              btn.textContent = "Copied";
+              btn.classList.add("is-copied");
+              setTimeout(() => {
+                btn.textContent = label;
+                btn.classList.remove("is-copied");
+              }, 1500);
+            } catch (_) {
+              btn.textContent = "Copy failed";
+              setTimeout(() => {
+                btn.textContent = label;
+              }, 1500);
+            }
+          });
+        }
 
-      (function initTimer() {
         const TURN_DURATION = 60000;
-        const bar = document.querySelector(".turn-timer-bar");
-        const track = document.querySelector(".turn-timer");
-        const text = document.querySelector(".turn-timer-text");
-        if (!bar) return;
+        const bar = root.querySelector(".turn-timer-bar");
+        const track = root.querySelector(".turn-timer");
+        const text = root.querySelector(".turn-timer-text");
+        if (bar) {
+          const startMs = parseInt(bar.dataset.start, 10);
+          if (!isNaN(startMs)) {
+            function formatRemaining(ms) {
+              const secs = Math.max(0, Math.ceil(ms / 1000));
+              const m = Math.floor(secs / 60);
+              const s = secs % 60;
+              return m + ":" + String(s).padStart(2, "0");
+            }
 
-        const startMs = parseInt(bar.dataset.start, 10);
-        if (isNaN(startMs)) return;
+            function update() {
+              const remaining = Math.max(0, TURN_DURATION - (Date.now() - startMs));
+              const fraction = remaining / TURN_DURATION;
+              bar.style.width = fraction * 100 + "%";
+              if (track) {
+                track.setAttribute("aria-valuenow", String(Math.ceil(remaining / 1000)));
+              }
+              if (text) {
+                text.textContent = formatRemaining(remaining);
+              }
 
-        function formatRemaining(ms) {
-          const secs = Math.max(0, Math.ceil(ms / 1000));
-          const m = Math.floor(secs / 60);
-          const s = secs % 60;
-          return m + ":" + String(s).padStart(2, "0");
+              if (fraction > 0.5) {
+                bar.style.backgroundColor = "var(--ui-green)";
+              } else if (fraction > 0.25) {
+                bar.style.backgroundColor = "var(--ui-yellow)";
+              } else {
+                bar.style.backgroundColor = "var(--ui-red)";
+              }
+
+              if (fraction > 0) requestAnimationFrame(update);
+            }
+            requestAnimationFrame(update);
+          }
         }
 
-        function update() {
-          const remaining = Math.max(0, TURN_DURATION - (Date.now() - startMs));
-          const fraction = remaining / TURN_DURATION;
-          bar.style.width = fraction * 100 + "%";
-          if (track) {
-            track.setAttribute("aria-valuenow", String(Math.ceil(remaining / 1000)));
-          }
-          if (text) {
-            text.textContent = formatRemaining(remaining);
-          }
-
-          if (fraction > 0.5) {
-            bar.style.backgroundColor = "var(--ui-green)";
-          } else if (fraction > 0.25) {
-            bar.style.backgroundColor = "var(--ui-yellow)";
-          } else {
-            bar.style.backgroundColor = "var(--ui-red)";
-          }
-
-          if (fraction > 0) requestAnimationFrame(update);
-        }
-
-        requestAnimationFrame(update);
-      })();
-
-      document.body.addEventListener("htmx:afterSwap", (e) => {
-        if (!e.detail.target.classList.contains("word-display")) return;
-        if (e.detail.target.querySelector(".is-blank")) return;
-        const form = document.querySelector(".guess-form");
-        if (!form) return;
-        const note = document.createElement("p");
-        note.className = "guessed-note";
-        note.textContent = "You got it.";
-        form.replaceWith(note);
-      });
-
-      (function initChatScroll() {
-        const el = document.getElementById("messages");
-        if (!el) return;
-        const scrollBottom = () => {
-          el.scrollTop = el.scrollHeight;
-        };
-        scrollBottom();
-        document.body.addEventListener("htmx:afterSettle", (e) => {
-          if (e.detail && e.detail.target === el) scrollBottom();
+        root.addEventListener("htmx:afterSwap", (e) => {
+          if (!e.detail.target.classList.contains("word-display")) return;
+          if (e.detail.target.querySelector(".is-blank")) return;
+          const form = root.querySelector(".guess-form");
+          if (!form) return;
+          const note = document.createElement("p");
+          note.className = "guessed-note";
+          note.textContent = "You got it.";
+          form.replaceWith(note);
         });
+
+        const messages = root.querySelector("#messages");
+        if (messages) {
+          const scrollBottom = () => {
+            messages.scrollTop = messages.scrollHeight;
+          };
+          scrollBottom();
+          root.addEventListener("htmx:afterSettle", (e) => {
+            if (e.detail && e.detail.target === messages) scrollBottom();
+          });
+        }
+
       })();
 
-      document.body.addEventListener("wrongguess", () => {
-        const flash = document.querySelector(".guess-flash");
-        if (!flash) return;
-        flash.hidden = false;
-        flash.textContent = "Nope";
-        clearTimeout(flash._t);
-        flash._t = setTimeout(() => {
-          flash.textContent = "";
-          flash.hidden = true;
-        }, 1200);
-      });
+      // Hx-Trigger events land on body; guard so root swaps don't stack handlers.
+      if (!document.body.dataset.emojixWrongguess) {
+        document.body.dataset.emojixWrongguess = "1";
+        document.body.addEventListener("wrongguess", () => {
+          const flash = document.querySelector(".guess-flash");
+          if (!flash) return;
+          flash.hidden = false;
+          flash.textContent = "Nope";
+          clearTimeout(flash._t);
+          flash._t = setTimeout(() => {
+            flash.textContent = "";
+            flash.hidden = true;
+          }, 1200);
+        });
+      }
     </script>
   </div>
 {{ end }}
