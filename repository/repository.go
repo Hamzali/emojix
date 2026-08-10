@@ -33,7 +33,10 @@ type GameRepository interface {
 
 	GetLatestTurn(ctx context.Context, gameID string) (model.GameTurn, error)
 	AddTurn(ctx context.Context, params AddTurnParams) (model.GameTurn, error)
-	SetTurnWord(ctx context.Context, turnID string, wordID string) error
+	// SetTurnWord assigns the picked word and seeds emoji_hint (typically word.Hint).
+	SetTurnWord(ctx context.Context, turnID string, wordID string, emojiHint string) error
+	// SetTurnEmojiHint replaces the full live emoji board for the turn.
+	SetTurnEmojiHint(ctx context.Context, turnID string, emojiHint string) error
 	CountTurns(ctx context.Context, gameID string) (int, error)
 
 	// Message/Content

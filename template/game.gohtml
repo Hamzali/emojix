@@ -54,7 +54,12 @@
             {{ end }}
           {{ end }}
         {{ else }}
-          <div class="emoji-display" aria-label="Emoji hint">{{ .EmojiHint }}</div>
+          <div
+            class="emoji-display"
+            sse-swap="emoji"
+            hx-swap="innerHTML"
+            aria-label="Emoji hint"
+          >{{ .EmojiHint }}</div>
 
           <div class="turn-timer-row">
             <div
@@ -86,6 +91,25 @@
 
           {{ if .IsTeller }}
             <p class="teller-note">You're the teller. Others are guessing.</p>
+            <form
+              class="emoji-form"
+              hx-post="/game/{{ .GameID }}/emoji"
+              hx-swap="none"
+              hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
+            >
+              <label class="sr-only" for="emoji-input">Add emoji</label>
+              <input
+                id="emoji-input"
+                name="emoji"
+                type="text"
+                placeholder="Add emoji…"
+                required
+                autocomplete="off"
+                maxlength="32"
+                inputmode="text"
+              />
+              <button type="submit" class="btn-primary">Add</button>
+            </form>
           {{ else if $hasGuessed }}
             <p class="guessed-note">You got it.</p>
           {{ else }}

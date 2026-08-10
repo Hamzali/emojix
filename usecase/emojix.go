@@ -16,6 +16,7 @@ import (
 	"slices"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 type GameUpdateHandler = func(notifType string, data string) error
@@ -34,6 +35,8 @@ type EmojixUsecase interface {
 	InitGame(ctx context.Context, userID string, listID string) (model.Game, error)
 	JoinGame(ctx context.Context, gameID string, userID string) error
 	PickWord(ctx context.Context, gameID string, userID string, wordID string) error
+	// AddEmoji appends emoji text to the current turn's public hint (teller-only).
+	AddEmoji(ctx context.Context, gameID string, userID string, emoji string) error
 	// Guess records a guess. correct is true when the guess matches the word.
 	Guess(ctx context.Context, gameID string, userID string, word string) (correct bool, err error)
 	Message(ctx context.Context, gameID string, userID string, word string) error
@@ -200,7 +203,12 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 		return gameState, err
 	}
 
-	gameState.Hint = word.Hint
+	// Prefer the live per-turn board; fall back to word.Hint for pre-migration rows.
+	if latestTurn.EmojiHint != "" {
+		gameState.Hint = latestTurn.EmojiHint
+	} else {
+		gameState.Hint = word.Hint
+	}
 	gameState.TurnStartedAt = latestTurn.StartedAt
 	gameState.LetterCount, gameState.WordCount = wordShape(word.Word)
 
@@ -409,10 +417,16 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string, listID stri
 }
 
 var (
-	ErrNotTeller     = errors.New("only the teller can pick the word")
-	ErrAlreadyPicked = errors.New("word already picked for this turn")
-	ErrInvalidOption = errors.New("word is not one of the turn options")
+	ErrNotTeller        = errors.New("only the teller can pick the word")
+	ErrAlreadyPicked    = errors.New("word already picked for this turn")
+	ErrInvalidOption    = errors.New("word is not one of the turn options")
+	ErrEmptyEmoji       = errors.New("emoji is empty")
+	ErrEmojiHintTooLong = errors.New("emoji hint exceeds max length")
+	ErrTurnNotActive    = errors.New("turn is not active")
 )
+
+// maxEmojiHintRunes caps the live emoji board to keep SSE/UI small.
+const maxEmojiHintRunes = 32
 
 type WordPickedNotification struct{}
 
@@ -439,12 +453,67 @@ func (e *emojixUsecase) PickWord(ctx context.Context, gameID, userID, wordID str
 		return ErrInvalidOption
 	}
 
-	if err := e.gameRepo.SetTurnWord(ctx, turn.ID, wordID); err != nil {
+	word, err := e.wordRepo.FindByID(ctx, wordID)
+	if err != nil {
+		return err
+	}
+
+	if err := e.gameRepo.SetTurnWord(ctx, turn.ID, wordID, word.Hint); err != nil {
 		return err
 	}
 
 	e.gameLoop.BeginTurn(gameID)
 	go e.gameNotifier.PubAll(gameID, &WordPickedNotification{})
+	return nil
+}
+
+type EmojiHintNotification struct {
+	Hint string
+}
+
+func (n *EmojiHintNotification) GetType() string { return "emoji" }
+func (n *EmojiHintNotification) GetData() string { return n.Hint }
+
+func (e *emojixUsecase) AddEmoji(ctx context.Context, gameID, userID, emoji string) error {
+	emoji = strings.TrimSpace(emoji)
+	if emoji == "" {
+		return ErrEmptyEmoji
+	}
+
+	turn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
+	if err != nil {
+		return err
+	}
+	if turn.WordID == "" || turn.StartedAt.IsZero() {
+		return ErrTurnNotActive
+	}
+	if turn.TellerID != userID {
+		return ErrNotTeller
+	}
+	if e.clock.Now().After(turn.StartedAt.Add(turnDuration)) {
+		return ErrTurnNotActive
+	}
+
+	// Seed from empty board using word.Hint so append works on legacy rows.
+	base := turn.EmojiHint
+	if base == "" {
+		word, err := e.wordRepo.FindByID(ctx, turn.WordID)
+		if err != nil {
+			return err
+		}
+		base = word.Hint
+	}
+
+	newHint := base + emoji
+	if utf8.RuneCountInString(newHint) > maxEmojiHintRunes {
+		return ErrEmojiHintTooLong
+	}
+
+	if err := e.gameRepo.SetTurnEmojiHint(ctx, turn.ID, newHint); err != nil {
+		return err
+	}
+
+	go e.gameNotifier.PubAll(gameID, &EmojiHintNotification{Hint: newHint})
 	return nil
 }
 

@@ -42,6 +42,12 @@ type MockEmojixUsecase struct {
 	PickWordLastUserID string
 	PickWordLastWordID string
 
+	AddEmojiFn         func(ctx context.Context, gameID, userID, emoji string) error
+	AddEmojiCalls      int
+	AddEmojiLastGameID string
+	AddEmojiLastUserID string
+	AddEmojiLastEmoji  string
+
 	JoinGameFn         func(ctx context.Context, gameID string, userID string) error
 	JoinGameCalls      int
 	JoinGameLastGameID string
@@ -102,6 +108,9 @@ func newMockUsecase() *MockEmojixUsecase {
 		return nil, nil
 	}
 	m.PickWordFn = func(ctx context.Context, gameID, userID, wordID string) error {
+		return nil
+	}
+	m.AddEmojiFn = func(ctx context.Context, gameID, userID, emoji string) error {
 		return nil
 	}
 	m.JoinGameFn = func(ctx context.Context, gameID, userID string) error {
@@ -171,6 +180,16 @@ func (m *MockEmojixUsecase) PickWord(ctx context.Context, gameID, userID, wordID
 	m.PickWordLastWordID = wordID
 	m.mu.Unlock()
 	return m.PickWordFn(ctx, gameID, userID, wordID)
+}
+
+func (m *MockEmojixUsecase) AddEmoji(ctx context.Context, gameID, userID, emoji string) error {
+	m.mu.Lock()
+	m.AddEmojiCalls++
+	m.AddEmojiLastGameID = gameID
+	m.AddEmojiLastUserID = userID
+	m.AddEmojiLastEmoji = emoji
+	m.mu.Unlock()
+	return m.AddEmojiFn(ctx, gameID, userID, emoji)
 }
 
 func (m *MockEmojixUsecase) JoinGame(ctx context.Context, gameID string, userID string) error {

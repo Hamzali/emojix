@@ -16,26 +16,30 @@ import (
 
 type MockGameRepository struct {
 	repository.GameRepository
-	FindByIDMock         func(ctx context.Context, id string) (model.Game, error)
-	CreateMock           func(ctx context.Context, listID string) (model.Game, error)
-	CreateCalled         bool
-	GetPlayersMock       func(ctx context.Context, id string) ([]model.Player, error)
-	GetMessagesMock      func(ctx context.Context, id string) ([]model.Message, error)
-	GetScoresMock        func(ctx context.Context, id string) ([]model.Score, error)
-	GetLatestTurnMock    func(ctx context.Context, id string) (model.GameTurn, error)
-	AddTurnMock          func(ctx context.Context, params repository.AddTurnParams) (model.GameTurn, error)
-	AddTurnCalled        bool
-	SetTurnWordMock      func(ctx context.Context, turnID, wordID string) error
-	SetTurnWordCalled    bool
-	CountTurnsMock       func(ctx context.Context, gameID string) (int, error)
-	SendMessageMock      func(ctx context.Context, gameID string, turnID string, userID string, content string) (model.Message, error)
-	SendMessageCalled    bool
-	AddPlayerMock        func(ctx context.Context, id string, playerID string) error
-	AddPlayerCalled      bool
-	SetPlayerStateMock   func(ctx context.Context, gameID, userID string, state model.PlayerState) error
-	SetPlayerStateCalled bool
-	AddScoreMock         func(ctx context.Context, gameID string, userID string, messageID string, turnID string, score int) error
-	AddScoreCalled       bool
+	FindByIDMock           func(ctx context.Context, id string) (model.Game, error)
+	CreateMock             func(ctx context.Context, listID string) (model.Game, error)
+	CreateCalled           bool
+	GetPlayersMock         func(ctx context.Context, id string) ([]model.Player, error)
+	GetMessagesMock        func(ctx context.Context, id string) ([]model.Message, error)
+	GetScoresMock          func(ctx context.Context, id string) ([]model.Score, error)
+	GetLatestTurnMock      func(ctx context.Context, id string) (model.GameTurn, error)
+	AddTurnMock            func(ctx context.Context, params repository.AddTurnParams) (model.GameTurn, error)
+	AddTurnCalled          bool
+	SetTurnWordMock        func(ctx context.Context, turnID, wordID, emojiHint string) error
+	SetTurnWordCalled      bool
+	SetTurnWordLastHint    string
+	SetTurnEmojiHintMock   func(ctx context.Context, turnID, emojiHint string) error
+	SetTurnEmojiHintCalled bool
+	SetTurnEmojiHintLast   string
+	CountTurnsMock         func(ctx context.Context, gameID string) (int, error)
+	SendMessageMock        func(ctx context.Context, gameID string, turnID string, userID string, content string) (model.Message, error)
+	SendMessageCalled      bool
+	AddPlayerMock          func(ctx context.Context, id string, playerID string) error
+	AddPlayerCalled        bool
+	SetPlayerStateMock     func(ctx context.Context, gameID, userID string, state model.PlayerState) error
+	SetPlayerStateCalled   bool
+	AddScoreMock           func(ctx context.Context, gameID string, userID string, messageID string, turnID string, score int) error
+	AddScoreCalled         bool
 }
 
 func (m *MockGameRepository) FindByID(ctx context.Context, id string) (model.Game, error) {
@@ -63,10 +67,19 @@ func (m *MockGameRepository) AddTurn(ctx context.Context, params repository.AddT
 	m.AddTurnCalled = true
 	return m.AddTurnMock(ctx, params)
 }
-func (m *MockGameRepository) SetTurnWord(ctx context.Context, turnID, wordID string) error {
+func (m *MockGameRepository) SetTurnWord(ctx context.Context, turnID, wordID, emojiHint string) error {
 	m.SetTurnWordCalled = true
+	m.SetTurnWordLastHint = emojiHint
 	if m.SetTurnWordMock != nil {
-		return m.SetTurnWordMock(ctx, turnID, wordID)
+		return m.SetTurnWordMock(ctx, turnID, wordID, emojiHint)
+	}
+	return nil
+}
+func (m *MockGameRepository) SetTurnEmojiHint(ctx context.Context, turnID, emojiHint string) error {
+	m.SetTurnEmojiHintCalled = true
+	m.SetTurnEmojiHintLast = emojiHint
+	if m.SetTurnEmojiHintMock != nil {
+		return m.SetTurnEmojiHintMock(ctx, turnID, emojiHint)
 	}
 	return nil
 }

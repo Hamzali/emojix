@@ -321,7 +321,7 @@ func (r *sqliteGameRepository) SendMessage(ctx context.Context, gameID string, t
 
 func (r *sqliteGameRepository) GetLatestTurn(ctx context.Context, gameID string) (model.GameTurn, error) {
 	row := r.db.QueryRowContext(ctx, `
-		SELECT id, word_id, teller_id, option_a, option_b, option_c, created_at, started_at
+		SELECT id, word_id, teller_id, option_a, option_b, option_c, emoji_hint, created_at, started_at
 		FROM game_turns WHERE game_id = ? ORDER BY created_at DESC LIMIT 1`, gameID)
 
 	err := row.Err()
@@ -335,7 +335,7 @@ func (r *sqliteGameRepository) GetLatestTurn(ctx context.Context, gameID string)
 	var createdAt int64
 	var wordID sql.NullString
 	var startedAt sql.NullInt64
-	err = row.Scan(&turn.ID, &wordID, &turn.TellerID, &turn.OptionA, &turn.OptionB, &turn.OptionC, &createdAt, &startedAt)
+	err = row.Scan(&turn.ID, &wordID, &turn.TellerID, &turn.OptionA, &turn.OptionB, &turn.OptionC, &turn.EmojiHint, &createdAt, &startedAt)
 
 	if err != nil {
 		return turn, err
@@ -378,11 +378,19 @@ func (r *sqliteGameRepository) AddTurn(ctx context.Context, params AddTurnParams
 	return turn, nil
 }
 
-func (r *sqliteGameRepository) SetTurnWord(ctx context.Context, turnID string, wordID string) error {
+func (r *sqliteGameRepository) SetTurnWord(ctx context.Context, turnID string, wordID string, emojiHint string) error {
 	now := time.Now().UnixMicro()
 	_, err := r.db.ExecContext(ctx,
-		`UPDATE game_turns SET word_id = ?, started_at = ? WHERE id = ? AND word_id IS NULL`,
-		wordID, now, turnID,
+		`UPDATE game_turns SET word_id = ?, emoji_hint = ?, started_at = ? WHERE id = ? AND word_id IS NULL`,
+		wordID, emojiHint, now, turnID,
+	)
+	return err
+}
+
+func (r *sqliteGameRepository) SetTurnEmojiHint(ctx context.Context, turnID string, emojiHint string) error {
+	_, err := r.db.ExecContext(ctx,
+		`UPDATE game_turns SET emoji_hint = ? WHERE id = ?`,
+		emojiHint, turnID,
 	)
 	return err
 }

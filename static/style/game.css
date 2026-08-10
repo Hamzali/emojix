@@ -369,7 +369,8 @@
   border: 0;
 }
 
-.guess-form {
+.guess-form,
+.emoji-form {
   display: flex;
   flex-wrap: wrap;
   gap: var(--space-1);
@@ -382,7 +383,14 @@
   min-height: 2.6rem;
 }
 
-.guess-form button {
+.emoji-form input {
+  flex: 1;
+  min-height: 2.6rem;
+  font-size: 1.25rem;
+}
+
+.guess-form button,
+.emoji-form button {
   white-space: nowrap;
 }
 

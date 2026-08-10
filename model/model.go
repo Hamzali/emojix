@@ -30,6 +30,7 @@ type GameTurn struct {
 	OptionA   string
 	OptionB   string
 	OptionC   string
+	EmojiHint string // live emoji board; seeded from word.hint on pick
 	CreatedAt time.Time
 	StartedAt time.Time // zero until teller picks
 }
