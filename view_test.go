@@ -60,6 +60,41 @@ func TestRenderEveryTemplate(t *testing.T) {
 					MaskedWord:    []string{"_", "_", "_", "_"},
 					EmojiHint:     "🐝",
 					TurnStartedAt: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC),
+					LetterCount:   4,
+					WordCount:     1,
+				})
+			},
+		},
+		{
+			name:     "renderGamePage status chrome",
+			contains: "teller",
+			render: func(buf *bytes.Buffer) error {
+				return view.renderGamePage(buf, GamePageViewParam{
+					GameID: "game-1",
+					Leaderboard: []model.LeaderboardEntry{
+						{PlayerID: "p1", Nickname: "Me-nickname", Me: true, Score: 1},
+						{PlayerID: "p2", Nickname: "Announcer", Me: false, IsTeller: true, GuessedWord: true, Score: 2},
+					},
+					MaskedWord:    []string{"*", "*", "*", " ", "*", "*", "*", "*", "*"},
+					EmojiHint:     "🍨",
+					TurnStartedAt: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC),
+					LetterCount:   8,
+					WordCount:     2,
+				})
+			},
+		},
+		{
+			name:     "renderGamePage waiting names teller",
+			contains: "Waiting for Announcer",
+			render: func(buf *bytes.Buffer) error {
+				return view.renderGamePage(buf, GamePageViewParam{
+					GameID:         "game-1",
+					AwaitingPick:   true,
+					IsTeller:       false,
+					TellerNickname: "Announcer",
+					Leaderboard: []model.LeaderboardEntry{
+						{PlayerID: "p2", Nickname: "Announcer", IsTeller: true},
+					},
 				})
 			},
 		},
@@ -90,6 +125,17 @@ func TestRenderEveryTemplate(t *testing.T) {
 			},
 		},
 		{
+			name:     "renderGameLeaderboard teller badge",
+			contains: "teller-badge",
+			render: func(buf *bytes.Buffer) error {
+				return view.renderGameLeaderboard(buf, GameLeaderboardViewParam{
+					Leaderboard: []model.LeaderboardEntry{
+						{PlayerID: "p1", Nickname: "n1", IsTeller: true, GuessedWord: true, Score: 1},
+					},
+				})
+			},
+		},
+		{
 			name:     "renderGameLoadingPage",
 			contains: "Next turn",
 			render: func(buf *bytes.Buffer) error {
@@ -111,5 +157,34 @@ func TestRenderEveryTemplate(t *testing.T) {
 				t.Fatalf("%s: rendered output missing expected substring %q\noutput:\n%s", c.name, c.contains, buf.String())
 			}
 		})
+	}
+}
+
+func TestRenderGamePageStatusChromeDetails(t *testing.T) {
+	view := NewHTMLView()
+	var buf bytes.Buffer
+	err := view.renderGamePage(&buf, GamePageViewParam{
+		GameID: "game-1",
+		Leaderboard: []model.LeaderboardEntry{
+			{PlayerID: "p2", Nickname: "Announcer", IsTeller: true, GuessedWord: true, Score: 2},
+		},
+		MaskedWord:    []string{"*", "*", "*"},
+		TurnStartedAt: time.Date(2024, 1, 2, 3, 4, 5, 0, time.UTC),
+		LetterCount:   8,
+		WordCount:     2,
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := buf.String()
+	for _, want := range []string{
+		"teller-badge",
+		"8 letters · 2 words",
+		"turn-timer-text",
+		"word-meta",
+	} {
+		if !strings.Contains(out, want) {
+			t.Errorf("missing %q", want)
+		}
 	}
 }

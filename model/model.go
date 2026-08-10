@@ -78,6 +78,7 @@ type LeaderboardEntry struct {
 	Nickname    string
 	Me          bool
 	GuessedWord bool
+	IsTeller    bool
 	Score       int
 }
 
@@ -88,16 +89,19 @@ type GameStateMessage struct {
 }
 
 type GameState struct {
-	GameID        string
-	CurrentUserID string
-	TurnID        string
-	TurnStartedAt time.Time
-	TurnEnded     bool
-	AwaitingPick  bool
-	IsTeller      bool
-	WordOptions   []Word // teller-only, while AwaitingPick
-	Word          string
-	Hint          string
-	Messages      []GameStateMessage
-	Leaderboard   []LeaderboardEntry
+	GameID         string
+	CurrentUserID  string
+	TurnID         string
+	TurnStartedAt  time.Time
+	TurnEnded      bool
+	AwaitingPick   bool
+	IsTeller       bool
+	TellerNickname string
+	WordOptions    []Word // teller-only, while AwaitingPick
+	Word           string
+	Hint           string
+	LetterCount    int // letters in the secret word (spaces excluded)
+	WordCount      int // whitespace-separated words in the secret
+	Messages       []GameStateMessage
+	Leaderboard    []LeaderboardEntry
 }
