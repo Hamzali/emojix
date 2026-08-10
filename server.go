@@ -4,6 +4,7 @@ import (
 	"context"
 	"emojix/model"
 	"emojix/usecase"
+	"errors"
 	"fmt"
 	"io"
 	"log"
@@ -230,6 +231,14 @@ func (e *webServer) Game(w http.ResponseWriter, r *http.Request) {
 
 	gameState, err := e.emojixUsecase.GameState(ctx, gameID, session.UserID)
 	if err != nil {
+		if errors.Is(err, usecase.ErrUserNotInGame) {
+			if joinErr := e.emojixUsecase.JoinGame(ctx, gameID, session.UserID); joinErr != nil {
+				e.handleError(w, joinErr, "failed to join")
+				return
+			}
+			http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusFound)
+			return
+		}
 		e.handleError(w, err, "failed to load game")
 		return
 	}

@@ -24,6 +24,9 @@ type GameUpdateHandler = func(notifType string, data string) error
 // (e.g. stale cookie after a DB reset).
 var ErrUserNotFound = errors.New("user not found")
 
+// ErrUserNotInGame is returned when the caller is not an active player in the game.
+var ErrUserNotInGame = errors.New("user not in the game")
+
 type EmojixUsecase interface {
 	InitUser(ctx context.Context) (model.User, error)
 	GetUser(ctx context.Context, userID string) (model.User, error)
@@ -757,13 +760,13 @@ func (e *emojixUsecase) filterActivePlayers(players []model.Player) []model.Play
 
 func (e *emojixUsecase) isPlayerInGame(currentUserID string, activePlayers []model.Player) error {
 	if len(activePlayers) == 0 {
-		return errors.New("has no players")
+		return ErrUserNotInGame
 	}
 	hasPlayer := slices.ContainsFunc(activePlayers, func(p model.Player) bool {
 		return p.ID == currentUserID
 	})
 	if !hasPlayer {
-		return errors.New("user not in the game")
+		return ErrUserNotInGame
 	}
 
 	return nil

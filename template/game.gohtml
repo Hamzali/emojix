@@ -18,7 +18,7 @@
           id="copy-game-id"
           data-game-id="{{ .GameID }}"
         >
-          Copy code
+          Copy link
         </button>
       </div>
       <section
@@ -145,7 +145,8 @@
         const label = btn.textContent;
         btn.addEventListener("click", async () => {
           try {
-            await navigator.clipboard.writeText(btn.dataset.gameId);
+            const shareUrl = `${location.origin}/game/${btn.dataset.gameId}`;
+            await navigator.clipboard.writeText(shareUrl);
             btn.textContent = "Copied";
             btn.classList.add("is-copied");
             setTimeout(() => {

@@ -567,6 +567,66 @@ func TestGame_GameStateError_500(t *testing.T) {
 	if view.renderErrorPageCalls != 1 {
 		t.Errorf("renderErrorPageCalls = %d, want 1", view.renderErrorPageCalls)
 	}
+	if uc.JoinGameCalls != 0 {
+		t.Errorf("JoinGameCalls = %d, want 0", uc.JoinGameCalls)
+	}
+}
+
+func TestGame_NotInGame_JoinsAndRedirects(t *testing.T) {
+	uc := newMockUsecase()
+	uc.GameStateFn = func(ctx context.Context, gameID, userID string) (model.GameState, error) {
+		return model.GameState{}, usecase.ErrUserNotInGame
+	}
+	view := &MockView{}
+	srv := newServer(uc, view)
+
+	r := setGameID(withSession(newReq("GET", "/game/g1", nil), "u2", "guest"), "g1")
+	w := httptest.NewRecorder()
+
+	srv.Game(w, r)
+
+	if uc.JoinGameCalls != 1 || uc.JoinGameLastGameID != "g1" || uc.JoinGameLastUserID != "u2" {
+		t.Fatalf("JoinGame calls=%d game=%q user=%q", uc.JoinGameCalls, uc.JoinGameLastGameID, uc.JoinGameLastUserID)
+	}
+	if w.Code != http.StatusFound {
+		t.Fatalf("status = %d, want 302", w.Code)
+	}
+	if loc := w.Header().Get("Location"); loc != "/game/g1" {
+		t.Errorf("Location = %q, want /game/g1", loc)
+	}
+	if view.renderGamePageCalls != 0 {
+		t.Errorf("renderGamePageCalls = %d, want 0 (redirect after join)", view.renderGamePageCalls)
+	}
+}
+
+func TestGame_NotInGame_RoomFull_500(t *testing.T) {
+	uc := newMockUsecase()
+	uc.GameStateFn = func(ctx context.Context, gameID, userID string) (model.GameState, error) {
+		return model.GameState{}, usecase.ErrUserNotInGame
+	}
+	uc.JoinGameFn = func(ctx context.Context, gameID, userID string) error {
+		return usecase.ErrJoinGameRoomFull
+	}
+	view := &MockView{}
+	srv := newServer(uc, view)
+
+	r := setGameID(withSession(newReq("GET", "/game/g1", nil), "u2", "guest"), "g1")
+	w := httptest.NewRecorder()
+
+	srv.Game(w, r)
+
+	if uc.JoinGameCalls != 1 {
+		t.Fatalf("JoinGameCalls = %d, want 1", uc.JoinGameCalls)
+	}
+	if w.Code != http.StatusInternalServerError {
+		t.Fatalf("status = %d, want 500", w.Code)
+	}
+	if view.renderErrorPageCalls != 1 {
+		t.Errorf("renderErrorPageCalls = %d, want 1", view.renderErrorPageCalls)
+	}
+	if view.renderGamePageCalls != 0 {
+		t.Errorf("renderGamePageCalls = %d, want 0", view.renderGamePageCalls)
+	}
 }
 
 // --- LoadingGame -------------------------------------------------------
