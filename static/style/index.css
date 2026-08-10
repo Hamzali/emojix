@@ -1,56 +1,88 @@
 .root {
-  height: 100%;
+  min-height: 100dvh;
   display: flex;
   flex-direction: column;
-}
-
-.form {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-}
-
-.join-form {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: var(--space-1);
 }
 
 .header {
   display: flex;
   flex-direction: column;
-  justify-content: center;
   align-items: center;
+  padding: var(--space-3) var(--space-2) var(--space-2);
+  text-align: center;
 }
 
 .content {
   flex: 1;
-  margin: 0.5rem 0.5rem;
-
-  & > div.window {
-    max-width: var(--size-sm);
-    margin: auto;
-  }
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 0 var(--space-2) var(--space-3);
 }
 
-@media screen and (width >=64rem) {
-  .content {
-    margin: 5rem 5rem;
-  }
+.content > .window {
+  width: min(100%, 22rem);
 }
 
-.footer {
-  text-align: center;
-  padding: var(--space-1) var(--space-2);
+.form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
 }
 
-.new-game-form {
+.new-game-form,
+.join-form {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
 }
 
-.new-game-form select {
-  padding: var(--space-1);
+.new-game-form button,
+.join-form button {
+  width: 100%;
+  margin-top: 0.25rem;
+}
+
+.form-divider {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-muted);
+  font-family: "Fredoka", system-ui, sans-serif;
+  font-weight: 600;
+  font-size: 0.85rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.form-divider::before,
+.form-divider::after {
+  content: "";
+  flex: 1;
+  height: 2px;
+  background: var(--color-shadow);
+  opacity: 0.25;
+}
+
+.footer {
+  text-align: center;
+  padding: var(--space-2);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--stroke-black);
+}
+
+.footer a {
+  color: inherit;
+}
+
+@media screen and (width >= 48rem) {
+  .header {
+    padding-top: var(--space-4);
+  }
+
+  .content {
+    align-items: center;
+    padding-bottom: var(--space-4);
+  }
 }

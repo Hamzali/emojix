@@ -1,119 +1,201 @@
 :root {
   --text-primary: #1f2937;
+  --text-muted: #5c564e;
   --color-shadow: #2d2a2e;
 
-  /* Background & Canvas */
   --bg-desktop: #e5e1d8;
-  /* The muted grey-purple background */
   --bg-window: #f1e7d0;
-  /* The warm cream window body */
+  --bg-surface: #fffaf0;
 
-  /* Primary Accents */
-  --ui-orange: #f28d54;
-  /* Primary buttons, progress bars, folders */
+  --ui-orange: #e67a3f;
   --ui-blue: #3a8fb7;
-  /* Title bars, globe icon, links */
-  --ui-yellow: #f8c84d;
-  /* Folder accents, search bars */
-  --ui-red: #e85a4f;
-  /* Error icons, close buttons */
-  --ui-pink: #f4a7b9;
-  /* Chat bubbles, heart icons */
-  --ui-green: #4caf50;
-  /* Timer, success indicators */
+  --ui-yellow: #e8b83a;
+  --ui-red: #d94f45;
+  --ui-green: #4a9e4e;
 
-  /* Borders & Shadows */
   --stroke-black: #1a1a1b;
-  /* The heavy 2px outline */
-
-  /* Status Colors */
-  --status-green: #a5d6a7;
-  /* For that "Happy Computer" face */
+  --focus-ring: rgba(230, 122, 63, 0.35);
 
   --radius: 0.5rem;
+  --radius-sm: 0.25rem;
   --radius-xl: 1.5rem;
 
   --space-1: 0.5rem;
   --space-2: 1rem;
   --space-3: 1.5rem;
+  --space-4: 2.5rem;
 
   --size-sm: 32rem;
   --size-md: 64rem;
+
+  --ease-out: cubic-bezier(0.22, 1, 0.36, 1);
+  --shadow-hard: -5px 5px 0 var(--color-shadow);
+  --shadow-hard-sm: -3px 3px 0 var(--color-shadow);
+  --shadow-hard-pressed: -1px 1px 0 var(--color-shadow);
 }
 
 html {
-  font-size: 24px;
-  font-family: "Nunito", sans-serif;
+  font-size: 22px;
+  font-family: "Nunito", system-ui, sans-serif;
+  scroll-behavior: smooth;
 }
 
 html,
 body {
-  height: 100%;
+  min-height: 100dvh;
   background-color: var(--ui-orange);
+  color: var(--text-primary);
 }
 
 h1,
-h2 {
-  font-family: "Fredoka", sans-serif;
+h2,
+h3 {
+  font-family: "Fredoka", system-ui, sans-serif;
+  letter-spacing: -0.02em;
+  text-wrap: balance;
 }
 
 p {
-  font-family: "Nunito", sans-serif;
   font-size: 1rem;
   color: var(--text-primary);
+  line-height: 1.55;
 }
 
 h1 {
-  font-size: 5rem;
+  font-size: clamp(2.5rem, 8vw, 4.5rem);
   text-transform: uppercase;
-  font-weight: bold;
-  color: var(--text-primary);
+  font-weight: 700;
+  line-height: 0.95;
 }
 
 h2 {
-  font-size: 2.5rem;
-  text-transform: capitalize;
-  color: var(--text-primary);
+  font-size: clamp(1.5rem, 4vw, 2.25rem);
+  font-weight: 600;
+  text-transform: none;
 }
 
-button {
-  border: solid;
-  border-color: var(--color-shadow);
-  border-radius: 0.2rem;
-  border-width: 0.1rem;
-  padding: var(--space-1) var(--space-2);
-  font-weight: bold;
+a {
+  color: var(--stroke-black);
+  font-weight: 700;
+  text-underline-offset: 0.15em;
+  transition: color 200ms var(--ease-out);
+}
+
+a:hover {
+  color: var(--bg-surface);
+}
+
+a:focus-visible {
+  outline: 3px solid var(--stroke-black);
+  outline-offset: 3px;
+  border-radius: 2px;
+}
+
+button,
+.btn {
+  appearance: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.35rem;
+  border: 0.12rem solid var(--color-shadow);
+  border-radius: var(--radius-sm);
+  padding: 0.55rem 1.1rem;
+  font-family: "Nunito", system-ui, sans-serif;
+  font-weight: 700;
+  font-size: 0.95rem;
+  line-height: 1.2;
+  color: var(--stroke-black);
   background-color: var(--ui-orange);
   cursor: pointer;
-
-  box-shadow: -5px 5px var(--color-shadow);
-  transition: all 300ms;
+  text-decoration: none;
+  box-shadow: var(--shadow-hard);
+  transition:
+    box-shadow 180ms var(--ease-out),
+    transform 180ms var(--ease-out),
+    background-color 180ms var(--ease-out);
 }
 
-button:hover {
-  box-shadow: -3px 3px var(--color-shadow);
+button:hover,
+.btn:hover {
+  box-shadow: var(--shadow-hard-sm);
+  transform: translate(-1px, 1px);
 }
 
-input {
-  border-style: solid;
-  border-color: var(--color-shadow);
-  border-width: 0.2rem;
+button:active,
+.btn:active {
+  box-shadow: var(--shadow-hard-pressed);
+  transform: translate(-3px, 3px);
+}
+
+button:focus-visible,
+.btn:focus-visible {
+  outline: 3px solid var(--stroke-black);
+  outline-offset: 3px;
+}
+
+button:disabled,
+.btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
+}
+
+input,
+select,
+textarea {
+  border: 0.14rem solid var(--color-shadow);
   border-radius: var(--radius);
-  padding: var(--space-1);
+  padding: 0.55rem 0.75rem;
+  background-color: var(--bg-surface);
+  color: var(--text-primary);
+  transition:
+    border-color 180ms var(--ease-out),
+    box-shadow 180ms var(--ease-out);
+}
+
+input::placeholder,
+textarea::placeholder {
+  color: var(--text-muted);
+  opacity: 0.85;
+}
+
+input:hover,
+select:hover,
+textarea:hover {
+  border-color: #3a3538;
+}
+
+input:focus,
+select:focus,
+textarea:focus {
+  outline: none;
+  border-color: var(--ui-orange);
+  box-shadow: 0 0 0 3px var(--focus-ring);
+}
+
+label {
+  font-weight: 700;
+  font-size: 0.85rem;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
 }
 
 .bar {
   background-color: var(--ui-blue);
   border-bottom: 3px solid var(--stroke-black);
-  padding: 8px;
+  padding: 0.45rem 0.75rem;
   color: white;
+  font-weight: 700;
 }
 
 .window {
   background-color: var(--bg-window);
   border: 3px solid var(--stroke-black);
-  box-shadow: -6px 6px 0px var(--color-shadow);
-  border-radius: 4px;
+  box-shadow: -6px 6px 0 var(--color-shadow);
+  border-radius: 6px;
+  overflow: hidden;
 }
 
 .window-content {
@@ -121,5 +203,26 @@ input {
 }
 
 .brand-title {
-  font-size: 3rem;
+  font-size: clamp(2.75rem, 10vw, 4rem);
+  margin: 0;
+}
+
+.tagline {
+  margin-top: 0.25rem;
+  font-weight: 600;
+  color: var(--stroke-black);
+  letter-spacing: 0.04em;
+}
+
+.muted {
+  color: var(--text-muted);
+}
+
+.page-center {
+  min-height: 100dvh;
+  display: grid;
+  place-content: center;
+  gap: var(--space-2);
+  padding: var(--space-2);
+  text-align: center;
 }

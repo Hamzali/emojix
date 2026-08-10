@@ -5,11 +5,11 @@
 {{ define "base" }}
   <div class="root">
     <header class="header">
-      <h1 class="brand-title">EMOJIX</h1>
-      <p>pick, tell, guess</p>
+      <h1 class="brand-title">Emojix</h1>
+      <p class="tagline">pick, tell, guess</p>
     </header>
 
-    <content class="content">
+    <main class="content">
       <div class="window">
         <div class="bar">Welcome, <em>{{ .Nickname }}</em></div>
 
@@ -22,22 +22,29 @@
                   <option value="{{ .ID }}">{{ .Title }}</option>
                 {{ end }}
               </select>
-              <button type="submit">New Game</button>
+              <button type="submit">New game</button>
             </form>
 
-            <h2>OR</h2>
+            <div class="form-divider" aria-hidden="true">or</div>
 
             <form method="get" action="/game/join" class="join-form">
-              <input name="game-id" value="123" />
-              <button type="submit">Join Game</button>
+              <label for="game-id">Game code</label>
+              <input
+                id="game-id"
+                name="game-id"
+                placeholder="Paste game code"
+                autocomplete="off"
+                required
+              />
+              <button type="submit">Join game</button>
             </form>
           </div>
         </div>
       </div>
-    </content>
+    </main>
 
     <footer class="footer">
-      created by <a href="http://tha.sh">thash</a>
+      created by <a href="https://tha.sh">thash</a>
     </footer>
   </div>
 {{ end }}

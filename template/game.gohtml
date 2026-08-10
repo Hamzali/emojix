@@ -4,16 +4,17 @@
 
 {{ define "base" }}
   <div class="root" hx-ext="sse" sse-connect="/game/{{ .GameID }}/sse">
-    <div class="sidebar">
+    <aside class="sidebar">
       <div class="window leaderboard">
         <div class="actions">
-          <button>
-            <a href="/">Home</a>
-          </button>
+          <a class="btn" href="/">Home</a>
           <button
-            onclick="navigator.clipboard.writeText('{{ .GameID }}');alert('copied to clipboard');"
+            type="button"
+            class="btn"
+            id="copy-game-id"
+            data-game-id="{{ .GameID }}"
           >
-            Copy GameID
+            Copy code
           </button>
         </div>
         <div class="window-content">
@@ -25,14 +26,14 @@
           </section>
         </div>
       </div>
-    </div>
+    </aside>
 
-    <div class="main">
+    <main class="main">
       <div class="window word-panel">
         <div class="window-content">
           {{ if .AwaitingPick }}
             {{ if .IsTeller }}
-              <p class="pick-prompt">Pick a word to tell:</p>
+              <p class="pick-prompt">Pick a word to tell</p>
               <div class="word-options">
                 {{ range .WordOptions }}
                   <form method="post" action="/game/{{ $.GameID }}/pick">
@@ -71,10 +72,11 @@
           >
             <textarea
               name="content"
-              placeholder="Type your guess..."
+              placeholder="Type your guess…"
               rows="1"
+              required
             ></textarea>
-            <button type="submit">Guess!</button>
+            <button type="submit">Guess</button>
           </form>
           {{ else }}
             <p class="teller-note">You're the teller — others are guessing.</p>
@@ -104,55 +106,64 @@
           >
             <textarea
               name="content"
-              placeholder="Send a message..."
+              placeholder="Send a message…"
               rows="1"
+              required
             ></textarea>
             <button type="submit">Send</button>
           </form>
         </div>
       </div>
-    </div>
+    </main>
 
-    <div hx-trigger="sse:turnended" />
+    <div hx-trigger="sse:turnended"></div>
     <script>
-      document.body.addEventListener("sse:turnended", (event) => {
-        location.reload();
-      });
-      document.body.addEventListener("sse:wordpicked", (event) => {
-        location.reload();
-      });
-      document.body.addEventListener("sse:newturn", (event) => {
-        location.reload();
-      });
+      document.body.addEventListener("sse:turnended", () => location.reload());
+      document.body.addEventListener("sse:wordpicked", () => location.reload());
+      document.body.addEventListener("sse:newturn", () => location.reload());
 
-      // Turn timer: visual bar with no numbers
+      (function initCopy() {
+        const btn = document.getElementById("copy-game-id");
+        if (!btn) return;
+        const label = btn.textContent;
+        btn.addEventListener("click", async () => {
+          try {
+            await navigator.clipboard.writeText(btn.dataset.gameId);
+            btn.textContent = "Copied";
+            btn.classList.add("is-copied");
+            setTimeout(() => {
+              btn.textContent = label;
+              btn.classList.remove("is-copied");
+            }, 1500);
+          } catch (_) {
+            btn.textContent = "Copy failed";
+            setTimeout(() => { btn.textContent = label; }, 1500);
+          }
+        });
+      })();
+
       (function initTimer() {
-        const TURN_DURATION = 60000; // 60 seconds in ms
-        const bar = document.querySelector('.turn-timer-bar');
+        const TURN_DURATION = 60000;
+        const bar = document.querySelector(".turn-timer-bar");
         if (!bar) return;
 
         const startMs = parseInt(bar.dataset.start, 10);
         if (isNaN(startMs)) return;
 
         function update() {
-          const elapsed = Date.now() - startMs;
-          const remaining = Math.max(0, TURN_DURATION - elapsed);
+          const remaining = Math.max(0, TURN_DURATION - (Date.now() - startMs));
           const fraction = remaining / TURN_DURATION;
+          bar.style.width = fraction * 100 + "%";
 
-          bar.style.width = (fraction * 100) + '%';
-
-          // Color: green → yellow → red as time runs out
           if (fraction > 0.5) {
-            bar.style.backgroundColor = 'var(--ui-green)';
+            bar.style.backgroundColor = "var(--ui-green)";
           } else if (fraction > 0.25) {
-            bar.style.backgroundColor = 'var(--ui-yellow)';
+            bar.style.backgroundColor = "var(--ui-yellow)";
           } else {
-            bar.style.backgroundColor = 'var(--ui-red)';
+            bar.style.backgroundColor = "var(--ui-red)";
           }
 
-          if (fraction > 0) {
-            requestAnimationFrame(update);
-          }
+          if (fraction > 0) requestAnimationFrame(update);
         }
 
         requestAnimationFrame(update);

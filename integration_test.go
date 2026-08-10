@@ -232,7 +232,7 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 	if resp.StatusCode != http.StatusOK {
 		t.Fatalf("GET loading status = %d, want 200", resp.StatusCode)
 	}
-	if !strings.Contains(string(body), "Loading Game Turn") {
+	if !strings.Contains(string(body), "Next turn") {
 		t.Errorf("loading page missing expected content")
 	}
 

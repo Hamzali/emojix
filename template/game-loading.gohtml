@@ -1,30 +1,28 @@
 {{ define "base" }}
-  <h1>Loading Game Turn...</h1>
-  <h2 id="counter">5</h2>
+  <div class="page-center">
+    <h1>Next turn</h1>
+    <h2 id="counter">5</h2>
+    <p class="muted">Hang tight while the board resets.</p>
+    <a class="btn" href="/game/{{ .GameID }}">Open now</a>
+  </div>
 
-  <a href="/game/{{ .GameID }}">
-    <button>Refresh</button>
-  </a>
+  <script>
+    function updateCounter() {
+      const el = document.getElementById("counter");
+      const n = Number(el.innerText);
 
-<script>
-	function updateCounter() {
-		const counterElement = document.getElementById("counter")
-		const counterValue = Number(counterElement.innerText)
+      if (n === 0 || n > 5 || Number.isNaN(n) || !Number.isFinite(n)) {
+        el.innerText = "Opening…";
+        setTimeout(() => location.replace("/game/{{.GameID}}"), 100);
+        return;
+      }
 
-		if (counterValue === 0 || counterValue > 5 || Number.isNaN(counterValue) || !Number.isFinite(counterValue)) {
-			counterElement.innerText = "Opening new turn..."
-			setTimeout(() => {
-				location.replace("/game/{{.GameID}}")
-			}, 100)
-			return
-		}
+      setTimeout(() => {
+        el.innerText = String(n - 1);
+        updateCounter();
+      }, 1200);
+    }
 
-		setTimeout(() => {
-			counterElement.innerText = String(counterValue - 1)
-			updateCounter()
-		}, 1200)
-	}
-
-	updateCounter()
-</script>
+    updateCounter();
+  </script>
 {{ end }}

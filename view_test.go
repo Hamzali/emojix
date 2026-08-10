@@ -31,7 +31,7 @@ func TestRenderEveryTemplate(t *testing.T) {
 	cases := []tc{
 		{
 			name:     "renderErrorPage",
-			contains: "Unexpected Error",
+			contains: "Something broke",
 			render: func(buf *bytes.Buffer) error {
 				return view.renderErrorPage(buf)
 			},
@@ -91,7 +91,7 @@ func TestRenderEveryTemplate(t *testing.T) {
 		},
 		{
 			name:     "renderGameLoadingPage",
-			contains: "Loading Game Turn",
+			contains: "Next turn",
 			render: func(buf *bytes.Buffer) error {
 				return view.renderGameLoadingPage(buf, GameLoadingPageViewParam{GameID: "game-1"})
 			},

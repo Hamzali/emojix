@@ -1,4 +1,5 @@
 {{ define "leaderboard" }}
+  {{ if .Leaderboard }}
   <ul>
     {{ range .Leaderboard }}
       <li>
@@ -9,11 +10,12 @@
             {{ .Nickname }}
           {{ end }}
         </span>
-        {{ if .GuessedWord }}
-          <span>✅</span>
-        {{ end }}
-        <span>{{ .Score }}</span>
+        <span>{{ if .GuessedWord }}✅{{ end }}</span>
+        <span class="score">{{ .Score }}</span>
       </li>
     {{ end }}
   </ul>
+  {{ else }}
+  <p class="empty">Waiting for players…</p>
+  {{ end }}
 {{ end }}
