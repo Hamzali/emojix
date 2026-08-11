@@ -1297,6 +1297,48 @@ func TestGuess(t *testing.T) {
 		drainPub(t, pubCh, 2)
 	})
 
+	// Regression: teller bonus/penalty scores must not count as guesses.
+	t.Run("last correct guess ends turn even when teller already has turn scores", func(t *testing.T) {
+		const tellerID = "teller-other"
+		mgr := baseGameRepo()
+		mgr.GetPlayersMock = func(ctx context.Context, id string) ([]model.Player, error) {
+			return []model.Player{
+				{ID: tellerID, Nickname: "Teller", State: model.ActivePlayerState},
+				{ID: userID, Nickname: "Nick1", State: model.ActivePlayerState},
+				{ID: "p-2", Nickname: "Nick2", State: model.ActivePlayerState},
+			}, nil
+		}
+		mgr.GetScoresMock = func(ctx context.Context, id string) ([]model.Score, error) {
+			return []model.Score{
+				{PlayerID: "p-2", TurnID: turnID, Score: 20},    // other guesser already correct
+				{PlayerID: tellerID, TurnID: turnID, Score: 5},  // teller bonus for that guess
+				{PlayerID: tellerID, TurnID: turnID, Score: -2}, // teller message penalty
+			}, nil
+		}
+		endGameTurnCalled := make(chan struct{}, 1)
+		mgr.AddScoreMock = func(ctx context.Context, g, u, msg, turn string, point int) error { return nil }
+		mur := &repotest.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{ID: userID, Nickname: "Nick1"}, nil
+			},
+		}
+		gl := &servicetest.MockGameLoop{
+			EndGameTurnMock: func(g string) {
+				endGameTurnCalled <- struct{}{}
+			},
+		}
+		uc, _ := newGuessUsecase(mur, mgr, baseWordRepo(), &servicetest.MockGameNotifier{}, gl, nil)
+
+		if _, err := uc.Guess(context.Background(), gameID, userID, theWord); err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		select {
+		case <-endGameTurnCalled:
+		case <-time.After(time.Second):
+			t.Fatal("expected EndGameTurn when all guessers solved; teller scores must be ignored")
+		}
+	})
+
 	t.Run("duplicate correct guess is idempotent (no second score / no guessed notif / no EndGameTurn)", func(t *testing.T) {
 		mgr := baseGameRepo()
 		mgr.GetPlayersMock = func(ctx context.Context, id string) ([]model.Player, error) {

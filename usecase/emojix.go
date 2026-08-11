@@ -591,13 +591,14 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 		}
 	}
 
-	// Count distinct players who already guessed this turn. The current user is
-	// about to be scored, so total guessers after this AddScore is len+1.
+	// Count distinct non-teller players who already guessed this turn. Teller
+	// rows (bonus / message penalty) must not count — they are not guesses.
+	// Current user is about to be scored, so total after this AddScore is len+1.
 	// TODO: the scoring formula below drifts from the README (+5 base, +1/sec
 	// left, -1 wrong guess). Alignment is a separate backlog decision.
 	guessedPlayers := map[string]struct{}{}
 	for _, s := range scores {
-		if s.TurnID == turnID {
+		if s.TurnID == turnID && s.PlayerID != turn.TellerID {
 			guessedPlayers[s.PlayerID] = struct{}{}
 		}
 	}
