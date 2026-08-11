@@ -819,8 +819,8 @@ func TestInitGame(t *testing.T) {
 		if startTurn != time.Minute {
 			t.Errorf("Start turn duration: got %v, want %v", startTurn, time.Minute)
 		}
-		if startPick != 30*time.Second {
-			t.Errorf("Start pick duration: got %v, want %v", startPick, 30*time.Second)
+		if startPick != 10*time.Second {
+			t.Errorf("Start pick duration: got %v, want %v", startPick, 10*time.Second)
 		}
 	})
 

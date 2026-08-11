@@ -139,7 +139,7 @@ func MaskMessage(content, word, nickname string) (display string, isSystem bool)
 
 const (
 	turnDuration = time.Second * 60
-	pickDuration = time.Second * 30 // skip teller if they don't pick
+	pickDuration = time.Second * 10 // skip teller if they don't pick
 )
 
 // ErrNoWords is returned when a new turn cannot be created because the word

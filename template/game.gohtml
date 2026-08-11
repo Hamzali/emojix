@@ -41,15 +41,15 @@
               role="progressbar"
               aria-label="Pick timer"
               aria-valuemin="0"
-              aria-valuemax="30"
+              aria-valuemax="10"
             >
               <div
                 class="turn-timer-bar"
                 data-start="{{ .TurnStartedAt.UnixMilli }}"
-                data-duration="30000"
+                data-duration="10000"
               ></div>
             </div>
-            <span class="turn-timer-text" aria-hidden="true">0:30</span>
+            <span class="turn-timer-text" aria-hidden="true">0:10</span>
           </div>
           {{ if .IsTeller }}
             <p class="pick-prompt">Pick a word to tell</p>
