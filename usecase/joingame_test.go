@@ -3,6 +3,7 @@ package usecase_test
 import (
 	"context"
 	"emojix/model"
+	"emojix/repository"
 	"emojix/repository/repotest"
 	"emojix/service"
 	"emojix/service/servicetest"
@@ -236,4 +237,85 @@ func TestJoinGame(t *testing.T) {
 
 		assertPubNotCalled(t, pubCh)
 	})
+
+	t.Run("second player starts the game loop", func(t *testing.T) {
+		mur := &repotest.MockUserRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.User, error) {
+				return model.User{ID: "new-player-id", Nickname: "NewPlayer"}, nil
+			},
+		}
+		getPlayersCalls := 0
+		mgr := &repotest.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				getPlayersCalls++
+				if getPlayersCalls == 1 {
+					// Pre-join roster (capacity check).
+					return []model.Player{
+						{ID: "host-id", Nickname: "Host", State: model.ActivePlayerState},
+					}, nil
+				}
+				// Post-join roster (tryStartGame).
+				return []model.Player{
+					{ID: "host-id", Nickname: "Host", State: model.ActivePlayerState},
+					{ID: "new-player-id", Nickname: "NewPlayer", State: model.ActivePlayerState},
+				}, nil
+			},
+			AddPlayerMock: func(ctx context.Context, id, playerID string) error { return nil },
+			FindByIDMock: func(ctx context.Context, id string) (model.Game, error) {
+				return model.Game{ID: id, ListID: "list-1"}, nil
+			},
+			CountTurnsMock: func(ctx context.Context, gameID string) (int, error) { return 0, nil },
+			AddTurnMock: func(ctx context.Context, params repository.AddTurnParams) (model.GameTurn, error) {
+				return model.GameTurn{ID: "turn-1", GameID: params.GameID, TellerID: params.TellerID}, nil
+			},
+		}
+		mwr := &repotest.MockWordRepository{
+			GetUnusedByListMock: func(ctx context.Context, listID, gameID string) ([]model.Word, error) {
+				return []model.Word{{ID: "w1", Word: "Alpha"}, {ID: "w2", Word: "Beta"}, {ID: "w3", Word: "Gamma"}}, nil
+			},
+		}
+		startCh := make(chan struct{}, 1)
+		gl := &servicetest.MockGameLoop{
+			StartMock: func(ctx context.Context, gameID string, turnDuration, pickDuration time.Duration) {
+				startCh <- struct{}{}
+			},
+		}
+		pubAllCh := make(chan struct{}, 1)
+		pubCh := make(chan struct{}, 1)
+		mgns := &servicetest.MockGameNotifier{
+			PubMock: func(gameID, userID string, notif service.GameNotification) {
+				pubCh <- struct{}{}
+			},
+			PubAllMock: func(gameID string, notif service.GameNotification) {
+				if notif.GetType() != "newturn" {
+					t.Errorf("PubAll type: got %q, want newturn", notif.GetType())
+				}
+				pubAllCh <- struct{}{}
+			},
+		}
+		emojiUsecase := usecase.NewEmojixUsecase(mur, mgr, mwr, nil, mgns, gl, service.NewRealClock())
+		err := emojiUsecase.JoinGame(context.Background(), "some-game-id", "new-player-id")
+		if err != nil {
+			t.Fatalf("unexpected error: %v", err)
+		}
+		if !mgr.AddTurnCalled {
+			t.Error("expected AddTurn when second player joins")
+		}
+		select {
+		case <-startCh:
+		case <-time.After(time.Second):
+			t.Fatal("expected gameLoop.Start")
+		}
+		select {
+		case <-pubAllCh:
+		case <-time.After(time.Second):
+			t.Fatal("expected PubAll newturn")
+		}
+		select {
+		case <-pubCh:
+		case <-time.After(time.Second):
+			t.Fatal("expected join Pub")
+		}
+	})
+
 }

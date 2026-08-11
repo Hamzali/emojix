@@ -245,20 +245,21 @@ func (e *webServer) Game(w http.ResponseWriter, r *http.Request) {
 	}
 
 	pageData := GamePageViewParam{
-		GameID:         gameState.GameID,
-		Leaderboard:    gameState.Leaderboard,
-		Messages:       gameState.Messages,
-		MaskedWord:     strings.Split(gameState.Word, ""),
-		EmojiHint:      gameState.Hint,
-		TurnStartedAt:  gameState.TurnStartedAt,
-		AwaitingPick:   gameState.AwaitingPick,
-		IsTeller:       gameState.IsTeller,
-		TellerNickname: gameState.TellerNickname,
-		LetterCount:    gameState.LetterCount,
-		WordCount:      gameState.WordCount,
-		WordOptions:    gameState.WordOptions,
-		TurnEnded:      gameState.TurnEnded,
-		EmojiKeyboard:  TellerEmojiKeyboard,
+		GameID:            gameState.GameID,
+		Leaderboard:       gameState.Leaderboard,
+		Messages:          gameState.Messages,
+		MaskedWord:        strings.Split(gameState.Word, ""),
+		EmojiHint:         gameState.Hint,
+		TurnStartedAt:     gameState.TurnStartedAt,
+		AwaitingPick:      gameState.AwaitingPick,
+		WaitingForPlayers: gameState.WaitingForPlayers,
+		IsTeller:          gameState.IsTeller,
+		TellerNickname:    gameState.TellerNickname,
+		LetterCount:       gameState.LetterCount,
+		WordCount:         gameState.WordCount,
+		WordOptions:       gameState.WordOptions,
+		TurnEnded:         gameState.TurnEnded,
+		EmojiKeyboard:     TellerEmojiKeyboard,
 	}
 	err = e.view.renderGamePage(w, pageData)
 	if err != nil {

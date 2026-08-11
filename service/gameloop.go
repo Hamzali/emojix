@@ -35,6 +35,9 @@ type GameLoop interface {
 	// Logs a warning and returns early if gameID already has an active loop.
 	Start(ctx context.Context, gameID string, turnDuration, pickDuration time.Duration)
 
+	// Running reports whether gameID has an active loop.
+	Running(gameID string) bool
+
 	// BeginTurn starts the turn timer after the teller has picked a word.
 	// Blocks until the timer is armed so EndGameTurn/clock.Advance are safe after return.
 	BeginTurn(gameID string)
@@ -81,6 +84,13 @@ func NewGameLoop(clock Clock) GameLoop {
 
 func (l *gameLoop) SetOnTurnEndHandler(handler OnTurnEndHandler) {
 	l.onTurnEnd = handler
+}
+
+func (l *gameLoop) Running(gameID string) bool {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	_, ok := l.cancels[gameID]
+	return ok
 }
 
 func (l *gameLoop) Start(ctx context.Context, gameID string, turnDuration, pickDuration time.Duration) {

@@ -92,19 +92,20 @@ type GameStateMessage struct {
 }
 
 type GameState struct {
-	GameID         string
-	CurrentUserID  string
-	TurnID         string
-	TurnStartedAt  time.Time
-	TurnEnded      bool
-	AwaitingPick   bool
-	IsTeller       bool
-	TellerNickname string
-	WordOptions    []Word // teller-only, while AwaitingPick
-	Word           string
-	Hint           string
-	LetterCount    int // letters in the secret word (spaces excluded)
-	WordCount      int // whitespace-separated words in the secret
-	Messages       []GameStateMessage
-	Leaderboard    []LeaderboardEntry
+	GameID            string
+	CurrentUserID     string
+	TurnID            string
+	TurnStartedAt     time.Time
+	TurnEnded         bool
+	AwaitingPick      bool
+	WaitingForPlayers bool // true until min players join and first turn starts
+	IsTeller          bool
+	TellerNickname    string
+	WordOptions       []Word // teller-only, while AwaitingPick
+	Word              string
+	Hint              string
+	LetterCount       int // letters in the secret word (spaces excluded)
+	WordCount         int // whitespace-separated words in the secret
+	Messages          []GameStateMessage
+	Leaderboard       []LeaderboardEntry
 }

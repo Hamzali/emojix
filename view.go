@@ -29,20 +29,21 @@ var TellerEmojiKeyboard = []string{
 }
 
 type GamePageViewParam struct {
-	GameID         string
-	Leaderboard    []model.LeaderboardEntry
-	Messages       []model.GameStateMessage
-	MaskedWord     []string
-	EmojiHint      string
-	TurnStartedAt  time.Time
-	AwaitingPick   bool
-	IsTeller       bool
-	TellerNickname string
-	LetterCount    int
-	WordCount      int
-	WordOptions    []model.Word
-	TurnEnded      bool
-	EmojiKeyboard  []string
+	GameID            string
+	Leaderboard       []model.LeaderboardEntry
+	Messages          []model.GameStateMessage
+	MaskedWord        []string
+	EmojiHint         string
+	TurnStartedAt     time.Time
+	AwaitingPick      bool
+	WaitingForPlayers bool
+	IsTeller          bool
+	TellerNickname    string
+	LetterCount       int
+	WordCount         int
+	WordOptions       []model.Word
+	TurnEnded         bool
+	EmojiKeyboard     []string
 }
 
 type GameLoadingPageViewParam struct {

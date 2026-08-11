@@ -68,6 +68,9 @@ func (e *emojixUsecase) JoinGame(ctx context.Context, gameID string, userID stri
 		return err
 	}
 
+	// First/second seat may unstick a waiting room or resume a paused game.
+	e.tryStartGame(ctx, gameID)
+
 	go e.gameNotifier.Pub(gameID, player.ID, &GameJoinNotification{
 		Nickname: player.Nickname,
 		PlayerID: player.ID,

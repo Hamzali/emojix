@@ -32,7 +32,10 @@
 
     <div class="board">
       <section class="stage">
-        {{ if .TurnEnded }}
+        {{ if .WaitingForPlayers }}
+          <p class="pick-wait">Waiting for players…</p>
+          <p class="pick-wait">Share the link so a friend can join</p>
+        {{ else if .TurnEnded }}
           <p class="pick-wait turn-wait">Next turn…</p>
         {{ else if .AwaitingPick }}
           <div class="turn-timer-row">

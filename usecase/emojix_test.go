@@ -739,7 +739,7 @@ func newInitGameUsecase(t *testing.T, mur repository.UserRepository, mgr *repote
 func TestInitGame(t *testing.T) {
 	const userID = "init-user-id"
 
-	t.Run("happy path starts loop after commit", func(t *testing.T) {
+	t.Run("happy path waits for second player (no start yet)", func(t *testing.T) {
 		mgr := &repotest.MockGameRepository{
 			CreateMock: func(ctx context.Context, listID string) (model.Game, error) {
 				return model.Game{ID: "game-1"}, nil
@@ -749,48 +749,13 @@ func TestInitGame(t *testing.T) {
 				assertCalledWith(t, "PlayerID", userID, playerID)
 				return nil
 			},
-			AddTurnMock: func(ctx context.Context, params repository.AddTurnParams) (model.GameTurn, error) {
-				assertCalledWith(t, "GameID", "game-1", params.GameID)
-				opts := []string{params.OptionA, params.OptionB, params.OptionC}
-				for _, o := range opts {
-					if o != "w1" && o != "w2" {
-						t.Errorf("AddTurn option %q not from unused list", o)
-					}
-				}
-				return model.GameTurn{TellerID: "teller-other", StartedAt: time.Now().Add(-time.Second), ID: "turn-1"}, nil
-			},
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
 				return []model.Player{{ID: userID, State: model.ActivePlayerState}}, nil
 			},
-			CountTurnsMock: func(ctx context.Context, gameID string) (int, error) { return 0, nil },
 		}
-		mwr := &repotest.MockWordRepository{
-			GetUnusedByListMock: func(ctx context.Context, listID, gameID string) ([]model.Word, error) {
-				return []model.Word{{ID: "w1", Word: "Alpha"}, {ID: "w2", Word: "Beta"}}, nil
-			},
-		}
-
-		committed := false
-		var startGameID string
-		var startTurn, startPick time.Duration
-		startCalled := make(chan struct{}, 1)
-		gl := &servicetest.MockGameLoop{
-			StartMock: func(ctx context.Context, gameID string, turnDuration, pickDuration time.Duration) {
-				if !committed {
-					t.Error("gameLoop.Start called before uow.Commit")
-				}
-				startGameID = gameID
-				startTurn = turnDuration
-				startPick = pickDuration
-				startCalled <- struct{}{}
-			},
-		}
+		mwr := &repotest.MockWordRepository{}
+		gl := &servicetest.MockGameLoop{}
 		uc, uow := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, nil)
-		// Wrap Commit so we can observe ordering relative to Start.
-		uow.CommitMock = func() error {
-			committed = true
-			return nil
-		}
 
 		game, err := uc.InitGame(context.Background(), userID, "list-1")
 		if err != nil {
@@ -799,28 +764,17 @@ func TestInitGame(t *testing.T) {
 		if game.ID != "game-1" {
 			t.Errorf("game ID: got %q, want game-1", game.ID)
 		}
-		if !mgr.CreateCalled || !mgr.AddPlayerCalled || !mgr.AddTurnCalled {
-			t.Error("expected Create/AddPlayer/AddTurn to be called")
+		if !mgr.CreateCalled || !mgr.AddPlayerCalled {
+			t.Error("expected Create/AddPlayer to be called")
+		}
+		if mgr.AddTurnCalled {
+			t.Error("AddTurn must wait for a second player")
 		}
 		if !uow.CommitCalled {
 			t.Error("expected Commit to be called")
 		}
-		if !gl.StartCalled {
-			t.Error("expected gameLoop.Start to be called")
-		}
-		select {
-		case <-startCalled:
-		case <-time.After(time.Second):
-			t.Fatal("StartMock was not invoked")
-		}
-		if startGameID != "game-1" {
-			t.Errorf("Start gameID: got %q, want game-1", startGameID)
-		}
-		if startTurn != time.Minute {
-			t.Errorf("Start turn duration: got %v, want %v", startTurn, time.Minute)
-		}
-		if startPick != 10*time.Second {
-			t.Errorf("Start pick duration: got %v, want %v", startPick, 10*time.Second)
+		if gl.StartCalled {
+			t.Error("Start must wait for a second player")
 		}
 	})
 
@@ -871,80 +825,6 @@ func TestInitGame(t *testing.T) {
 		}
 	})
 
-	t.Run("AddTurn fails rolls back and does not start", func(t *testing.T) {
-		mgr := &repotest.MockGameRepository{
-			CreateMock: func(ctx context.Context, listID string) (model.Game, error) {
-				return model.Game{ID: "game-2", ListID: listID}, nil
-			},
-			AddPlayerMock: func(ctx context.Context, gameID, playerID string) error { return nil },
-			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
-				return []model.Player{{ID: userID, State: model.ActivePlayerState}}, nil
-			},
-			CountTurnsMock: func(ctx context.Context, gameID string) (int, error) { return 0, nil },
-			AddTurnMock: func(ctx context.Context, params repository.AddTurnParams) (model.GameTurn, error) {
-				return model.GameTurn{TellerID: "teller-other", StartedAt: time.Now().Add(-time.Second)}, errors.New("addturn failed")
-			},
-		}
-		mwr := &repotest.MockWordRepository{
-			GetUnusedByListMock: func(ctx context.Context, listID, gameID string) ([]model.Word, error) {
-				return []model.Word{{ID: "w1", Word: "Alpha"}}, nil
-			},
-		}
-		gl := &servicetest.MockGameLoop{}
-		uc, uow := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, nil)
-
-		_, err := uc.InitGame(context.Background(), userID, "list-1")
-		if err == nil {
-			t.Fatal("expected error from AddTurn")
-		}
-		if uow.CommitCalled {
-			t.Error("Commit must not be called on AddTurn failure")
-		}
-		if !uow.RollbackCalled {
-			t.Error("Rollback (deferred) must be called on AddTurn failure")
-		}
-		if gl.StartCalled {
-			t.Error("Start must not be called on AddTurn failure")
-		}
-	})
-
-	t.Run("empty word list returns ErrNoWords", func(t *testing.T) {
-		mgr := &repotest.MockGameRepository{
-			CreateMock: func(ctx context.Context, listID string) (model.Game, error) {
-				return model.Game{ID: "game-3", ListID: listID}, nil
-			},
-			AddPlayerMock: func(ctx context.Context, gameID, playerID string) error { return nil },
-			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
-				return []model.Player{{ID: userID, State: model.ActivePlayerState}}, nil
-			},
-			CountTurnsMock: func(ctx context.Context, gameID string) (int, error) { return 0, nil },
-			AddTurnMock: func(ctx context.Context, params repository.AddTurnParams) (model.GameTurn, error) {
-				t.Error("AddTurn must not be called when there are no words")
-				return model.GameTurn{TellerID: "teller-other", StartedAt: time.Now().Add(-time.Second)}, nil
-			},
-		}
-		mwr := &repotest.MockWordRepository{
-			GetUnusedByListMock: func(ctx context.Context, listID, gameID string) ([]model.Word, error) {
-				return []model.Word{}, nil
-			},
-		}
-		gl := &servicetest.MockGameLoop{}
-		uc, uow := newInitGameUsecase(t, nil, mgr, mwr, gl, nil, nil)
-
-		_, err := uc.InitGame(context.Background(), userID, "list-1")
-		if !errors.Is(err, usecase.ErrNoWords) {
-			t.Fatalf("expected ErrNoWords, got %v", err)
-		}
-		if uow.CommitCalled {
-			t.Error("Commit must not be called on empty word list")
-		}
-		if !uow.RollbackCalled {
-			t.Error("Rollback (deferred) must be called on empty word list")
-		}
-		if gl.StartCalled {
-			t.Error("Start must not be called on empty word list")
-		}
-	})
 }
 
 func TestInitUser(t *testing.T) {
@@ -2215,7 +2095,10 @@ func TestOnTurnEnd(t *testing.T) {
 				return model.Game{ID: id, ListID: "list-1"}, nil
 			},
 			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
-				return []model.Player{{ID: "p1", State: model.ActivePlayerState}}, nil
+				return []model.Player{
+					{ID: "p1", State: model.ActivePlayerState},
+					{ID: "p2", State: model.ActivePlayerState},
+				}, nil
 			},
 			CountTurnsMock: func(ctx context.Context, gameID string) (int, error) { return 0, nil },
 			AddTurnMock: func(ctx context.Context, params repository.AddTurnParams) (model.GameTurn, error) {
@@ -2368,6 +2251,45 @@ func TestOnTurnEnd(t *testing.T) {
 			t.Errorf("StopGame count: got %d, want 1", m.stopCount)
 		}
 	})
+	t.Run("fewer than min players: StopGame, no new turn", func(t *testing.T) {
+		m := &onTurnEndMocks{
+			pubAllCh: make(chan struct{}, 4),
+			stopCh:   make(chan string, 4),
+		}
+		mgr := &repotest.MockGameRepository{
+			GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+				return []model.Player{{ID: "solo", State: model.ActivePlayerState}}, nil
+			},
+			AddTurnMock: func(ctx context.Context, params repository.AddTurnParams) (model.GameTurn, error) {
+				t.Error("AddTurn must not run without enough players")
+				return model.GameTurn{}, nil
+			},
+		}
+		mgn := &servicetest.MockGameNotifier{
+			PubAllMock: func(g string, n service.GameNotification) {
+				m.pubAllCount++
+				m.pubAllCh <- struct{}{}
+			},
+		}
+		gl := &servicetest.MockGameLoop{
+			StopGameMock: func(g string) {
+				m.stopCount++
+				m.stopGameIDs = append(m.stopGameIDs, g)
+				m.stopCh <- g
+			},
+		}
+		clock := servicetest.NewFakeClock()
+		_ = usecase.NewEmojixUsecase(nil, mgr, nil, nil, mgn, gl, clock)
+		runHandler(t, gl, clock)
+
+		if m.pubAllCount != 1 {
+			t.Errorf("PubAll count: got %d, want 1 (turnended only)", m.pubAllCount)
+		}
+		if m.stopCount != 1 {
+			t.Errorf("StopGame count: got %d, want 1", m.stopCount)
+		}
+	})
+
 }
 
 func TestPickWord(t *testing.T) {

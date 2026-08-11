@@ -13,6 +13,7 @@ type MockGameLoop struct {
 
 	StartMock                 func(ctx context.Context, gameID string, turnDuration, pickDuration time.Duration)
 	StartCalled               bool
+	RunningMock               func(gameID string) bool
 	BeginTurnMock             func(gameID string)
 	BeginTurnCalled           bool
 	EndGameTurnMock           func(gameID string)
@@ -31,6 +32,13 @@ func (m *MockGameLoop) Start(ctx context.Context, gameID string, turnDuration, p
 	if m.StartMock != nil {
 		m.StartMock(ctx, gameID, turnDuration, pickDuration)
 	}
+}
+
+func (m *MockGameLoop) Running(gameID string) bool {
+	if m.RunningMock != nil {
+		return m.RunningMock(gameID)
+	}
+	return false
 }
 
 func (m *MockGameLoop) BeginTurn(gameID string) {

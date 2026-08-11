@@ -138,8 +138,9 @@ func MaskMessage(content, word, nickname string) (display string, isSystem bool)
 }
 
 const (
-	turnDuration = time.Second * 60
-	pickDuration = time.Second * 10 // skip teller if they don't pick
+	turnDuration      = time.Second * 60
+	pickDuration      = time.Second * 10 // skip teller if they don't pick
+	minPlayersToStart = 2                // host alone waits for a second player
 )
 
 // ErrNoWords is returned when a new turn cannot be created because the word
@@ -175,6 +176,13 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 
 	latestTurn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			gameState.GameID = gameID
+			gameState.CurrentUserID = currentUserID
+			gameState.WaitingForPlayers = true
+			gameState.Leaderboard = e.buildLeaderboard(currentUserID, "", "", scores, activePlayers)
+			return gameState, nil
+		}
 		return gameState, err
 	}
 
@@ -404,19 +412,41 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string, listID stri
 		return model.Game{}, err
 	}
 
-	err = e.newGameTurn(ctx, gameRepo, game.ID, listID)
-	if err != nil {
-		return model.Game{}, err
-	}
-
 	if err = uow.Commit(); err != nil {
 		return model.Game{}, err
 	}
 
-	// Start the game loop AFTER commit. Timer waits for BeginTurn (teller pick).
-	e.gameLoop.Start(context.Background(), game.ID, turnDuration, pickDuration)
+	// Solo host waits; loop starts once a second player joins.
+	e.tryStartGame(ctx, game.ID)
 
 	return game, nil
+}
+
+// tryStartGame starts the loop + first turn when enough players are seated and
+// no loop is running yet. Safe to call on every join.
+func (e *emojixUsecase) tryStartGame(ctx context.Context, gameID string) {
+	if e.gameLoop.Running(gameID) {
+		return
+	}
+	players, err := e.gameRepo.GetPlayers(ctx, gameID)
+	if err != nil {
+		log.Printf("tryStartGame GetPlayers: %v", err)
+		return
+	}
+	if len(e.filterActivePlayers(players)) < minPlayersToStart {
+		return
+	}
+	game, err := e.gameRepo.FindByID(ctx, gameID)
+	if err != nil {
+		log.Printf("tryStartGame FindByID: %v", err)
+		return
+	}
+	if err := e.newGameTurn(ctx, e.gameRepo, gameID, game.ListID); err != nil {
+		log.Printf("tryStartGame newGameTurn: %v", err)
+		return
+	}
+	e.gameLoop.Start(context.Background(), gameID, turnDuration, pickDuration)
+	go e.gameNotifier.PubAll(gameID, &NewTurnNotification{})
 }
 
 var (
@@ -658,6 +688,18 @@ func (e *emojixUsecase) Guess(ctx context.Context, gameID string, userID string,
 func (e *emojixUsecase) onTurnEnd(ctx context.Context, gameID string) {
 	e.gameNotifier.PubAll(gameID, &GameTurnEndNotification{})
 	<-e.clock.After(5 * time.Second)
+
+	players, err := e.gameRepo.GetPlayers(ctx, gameID)
+	if err != nil {
+		log.Printf("failed to load players for new turn: %v", err)
+		e.gameLoop.StopGame(gameID)
+		return
+	}
+	if len(e.filterActivePlayers(players)) < minPlayersToStart {
+		// Pause until another player joins (tryStartGame on JoinGame).
+		e.gameLoop.StopGame(gameID)
+		return
+	}
 
 	game, err := e.gameRepo.FindByID(ctx, gameID)
 	if err != nil {
@@ -907,6 +949,9 @@ func (e *emojixUsecase) Leaderboard(ctx context.Context, gameID, currentUserID s
 
 	latestTurn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
 	if err != nil {
+		if errors.Is(err, sql.ErrNoRows) {
+			return e.buildLeaderboard(currentUserID, "", "", scores, activePlayers), nil
+		}
 		return leaderboardEntries, err
 	}
 

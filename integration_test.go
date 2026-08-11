@@ -124,7 +124,7 @@ func initSession(t *testing.T, ts *httptest.Server, client *http.Client) (cookie
 }
 
 // TestE2EInitNewGameGuessFlow drives a full session through the real stack:
-// init host → create game → pick word → second player joins → guesses → turn ends.
+// init host → create game → second player joins (starts) → pick word → guess → turn ends.
 func TestE2EInitNewGameGuessFlow(t *testing.T) {
 	ts, client := newE2EServer(t)
 
@@ -143,7 +143,7 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 		t.Fatalf("POST /game/new Location = %q, want /game/{id}", gamePath)
 	}
 
-	// 3. Host (teller) sees pick UI with 3 options.
+	// 3. Solo host waits for a second player — no pick UI yet.
 	resp = doWithCookies(t, client, "GET", ts.URL+gamePath, nil, hostCookies)
 	body, err := io.ReadAll(resp.Body)
 	resp.Body.Close()
@@ -154,22 +154,14 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 		t.Fatalf("GET %s status = %d, want 200", gamePath, resp.StatusCode)
 	}
 	page := string(body)
-	if !strings.Contains(page, "Pick a word") {
-		t.Errorf("teller page missing pick prompt")
+	if !strings.Contains(page, "Waiting for players") {
+		t.Errorf("solo host page missing waiting copy")
 	}
-	if !strings.Contains(page, "Apple") || !strings.Contains(page, "Banana") || !strings.Contains(page, "Cherry") {
-		t.Errorf("teller page missing word options")
-	}
-
-	// 4. Host picks Apple.
-	form = url.Values{"word-id": {"w1"}}
-	resp = doWithCookies(t, client, "POST", ts.URL+gamePath+"/pick", strings.NewReader(form.Encode()), hostCookies)
-	resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("POST pick status = %d, want 303", resp.StatusCode)
+	if strings.Contains(page, "Pick a word") {
+		t.Errorf("solo host must not see pick UI yet")
 	}
 
-	// 5. Guesser session joins.
+	// 4. Guesser joins — this starts the game.
 	guesserCookies, guesserNick := initSession(t, ts, client)
 	resp = doWithCookies(t, client, "GET", ts.URL+gamePath+"/join", nil, guesserCookies)
 	resp.Body.Close()
@@ -177,7 +169,33 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 		t.Fatalf("join status = %d, want 302", resp.StatusCode)
 	}
 
-	// 6. Guesser sees masked word + hint, not the plain word.
+	// 5. Host (teller by join order) sees pick UI with 3 options.
+	resp = doWithCookies(t, client, "GET", ts.URL+gamePath, nil, hostCookies)
+	body, err = io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s status = %d, want 200", gamePath, resp.StatusCode)
+	}
+	page = string(body)
+	if !strings.Contains(page, "Pick a word") {
+		t.Errorf("teller page missing pick prompt")
+	}
+	if !strings.Contains(page, "Apple") || !strings.Contains(page, "Banana") || !strings.Contains(page, "Cherry") {
+		t.Errorf("teller page missing word options")
+	}
+
+	// 6. Host picks Apple.
+	form = url.Values{"word-id": {"w1"}}
+	resp = doWithCookies(t, client, "POST", ts.URL+gamePath+"/pick", strings.NewReader(form.Encode()), hostCookies)
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusSeeOther {
+		t.Fatalf("POST pick status = %d, want 303", resp.StatusCode)
+	}
+
+	// 7. Guesser sees masked word + hint, not the plain word.
 	resp = doWithCookies(t, client, "GET", ts.URL+gamePath, nil, guesserCookies)
 	body, err = io.ReadAll(resp.Body)
 	resp.Body.Close()
