@@ -16,7 +16,7 @@ import (
 	"slices"
 	"strings"
 	"time"
-	"unicode/utf8"
+	"unicode"
 )
 
 type GameUpdateHandler = func(notifType string, data string) error
@@ -35,8 +35,6 @@ type EmojixUsecase interface {
 	InitGame(ctx context.Context, userID string, listID string) (model.Game, error)
 	JoinGame(ctx context.Context, gameID string, userID string) error
 	PickWord(ctx context.Context, gameID string, userID string, wordID string) error
-	// AddEmoji appends emoji text to the current turn's public hint (teller-only).
-	AddEmoji(ctx context.Context, gameID string, userID string, emoji string) error
 	// Guess records a guess. correct is true when the guess matches the word.
 	Guess(ctx context.Context, gameID string, userID string, word string) (correct bool, err error)
 	Message(ctx context.Context, gameID string, userID string, word string) error
@@ -417,16 +415,16 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string, listID stri
 }
 
 var (
-	ErrNotTeller        = errors.New("only the teller can pick the word")
-	ErrAlreadyPicked    = errors.New("word already picked for this turn")
-	ErrInvalidOption    = errors.New("word is not one of the turn options")
-	ErrEmptyEmoji       = errors.New("emoji is empty")
-	ErrEmojiHintTooLong = errors.New("emoji hint exceeds max length")
-	ErrTurnNotActive    = errors.New("turn is not active")
+	ErrNotTeller       = errors.New("only the teller can pick the word")
+	ErrAlreadyPicked   = errors.New("word already picked for this turn")
+	ErrInvalidOption   = errors.New("word is not one of the turn options")
+	ErrTellerEmojiOnly = errors.New("teller may only send emoji")
+	ErrEmptyMessage    = errors.New("message is empty")
 )
 
-// maxEmojiHintRunes caps the live emoji board to keep SSE/UI small.
-const maxEmojiHintRunes = 32
+// tellerMessagePenalty is subtracted from the teller's score for each chat
+// message so extra hinting is costly (teller earns +5 per correct guess).
+const tellerMessagePenalty = 2
 
 type WordPickedNotification struct{}
 
@@ -464,56 +462,6 @@ func (e *emojixUsecase) PickWord(ctx context.Context, gameID, userID, wordID str
 
 	e.gameLoop.BeginTurn(gameID)
 	go e.gameNotifier.PubAll(gameID, &WordPickedNotification{})
-	return nil
-}
-
-type EmojiHintNotification struct {
-	Hint string
-}
-
-func (n *EmojiHintNotification) GetType() string { return "emoji" }
-func (n *EmojiHintNotification) GetData() string { return n.Hint }
-
-func (e *emojixUsecase) AddEmoji(ctx context.Context, gameID, userID, emoji string) error {
-	emoji = strings.TrimSpace(emoji)
-	if emoji == "" {
-		return ErrEmptyEmoji
-	}
-
-	turn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
-	if err != nil {
-		return err
-	}
-	if turn.WordID == "" || turn.StartedAt.IsZero() {
-		return ErrTurnNotActive
-	}
-	if turn.TellerID != userID {
-		return ErrNotTeller
-	}
-	if e.clock.Now().After(turn.StartedAt.Add(turnDuration)) {
-		return ErrTurnNotActive
-	}
-
-	// Seed from empty board using word.Hint so append works on legacy rows.
-	base := turn.EmojiHint
-	if base == "" {
-		word, err := e.wordRepo.FindByID(ctx, turn.WordID)
-		if err != nil {
-			return err
-		}
-		base = word.Hint
-	}
-
-	newHint := base + emoji
-	if utf8.RuneCountInString(newHint) > maxEmojiHintRunes {
-		return ErrEmojiHintTooLong
-	}
-
-	if err := e.gameRepo.SetTurnEmojiHint(ctx, turn.ID, newHint); err != nil {
-		return err
-	}
-
-	go e.gameNotifier.PubAll(gameID, &EmojiHintNotification{Hint: newHint})
 	return nil
 }
 
@@ -768,7 +716,32 @@ func (e *emojixUsecase) newGameTurn(ctx context.Context, gr repository.GameRepos
 	return err
 }
 
+// IsEmojiOnly reports whether s is non-empty and contains no letters or digits
+// (emoji / symbols / spaces only). Used to keep teller chat emoji-only.
+func IsEmojiOnly(s string) bool {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return false
+	}
+	has := false
+	for _, r := range s {
+		if unicode.IsSpace(r) {
+			continue
+		}
+		if unicode.IsLetter(r) || unicode.IsDigit(r) {
+			return false
+		}
+		has = true
+	}
+	return has
+}
+
 func (e *emojixUsecase) Message(ctx context.Context, gameID string, userID string, content string) error {
+	content = strings.TrimSpace(content)
+	if content == "" {
+		return ErrEmptyMessage
+	}
+
 	turn, err := e.gameRepo.GetLatestTurn(ctx, gameID)
 	if err != nil {
 		return err
@@ -779,9 +752,21 @@ func (e *emojixUsecase) Message(ctx context.Context, gameID string, userID strin
 		return err
 	}
 
-	_, err = e.gameRepo.SendMessage(ctx, gameID, turn.ID, userID, content)
+	isTeller := turn.TellerID == userID
+	if isTeller && !IsEmojiOnly(content) {
+		return ErrTellerEmojiOnly
+	}
+
+	msg, err := e.gameRepo.SendMessage(ctx, gameID, turn.ID, userID, content)
 	if err != nil {
 		return err
+	}
+
+	if isTeller {
+		// ponytail: non-atomic message+penalty; UOW if we ever see partial fails
+		if err := e.gameRepo.AddScore(ctx, gameID, userID, msg.ID, turn.ID, -tellerMessagePenalty); err != nil {
+			return err
+		}
 	}
 
 	go e.gameNotifier.Pub(gameID, userID, &GameMsgNotification{UserID: userID, Nickname: currPlayer.Nickname, Content: content})

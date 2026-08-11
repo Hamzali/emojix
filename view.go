@@ -20,6 +20,14 @@ type IndexPageViewParam struct {
 	Lists    []model.WordList
 }
 
+// TellerEmojiKeyboard is the fixed palette shown to the active teller for chat.
+var TellerEmojiKeyboard = []string{
+	"😀", "😂", "😍", "😎", "🤔", "😱", "🙌", "👍", "👎", "👋",
+	"🔥", "⭐", "💯", "🎉", "❤️", "💔", "✅", "❌", "⚡", "💡",
+	"🍎", "🍕", "🐶", "🐱", "🦄", "🐸", "🌈", "☀️", "🌙", "⚽",
+	"🎵", "🎮", "🚗", "✈️", "🏠", "📱", "💻", "📚", "🔑", "👀",
+}
+
 type GamePageViewParam struct {
 	GameID         string
 	Leaderboard    []model.LeaderboardEntry
@@ -34,6 +42,7 @@ type GamePageViewParam struct {
 	WordCount      int
 	WordOptions    []model.Word
 	TurnEnded      bool
+	EmojiKeyboard  []string
 }
 
 type GameLoadingPageViewParam struct {

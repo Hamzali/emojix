@@ -748,58 +748,6 @@ func TestMessage_UsecaseError_500(t *testing.T) {
 	}
 }
 
-// --- AddEmoji ----------------------------------------------------------
-
-func TestAddEmoji_CallsUsecaseAndReturns204(t *testing.T) {
-	uc := newMockUsecase()
-	view := &MockView{}
-	srv := newServer(uc, view)
-
-	r := setGameID(
-		withSession(newReq("POST", "/game/g1/emoji", strings.NewReader("emoji=%F0%9F%94%A5")), "u1", "nick"),
-		"g1",
-	)
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	w := httptest.NewRecorder()
-
-	srv.AddEmoji(w, r)
-
-	if w.Code != http.StatusNoContent {
-		t.Fatalf("status = %d, want 204", w.Code)
-	}
-	if uc.AddEmojiCalls != 1 {
-		t.Fatalf("AddEmojiCalls = %d, want 1", uc.AddEmojiCalls)
-	}
-	if uc.AddEmojiLastGameID != "g1" || uc.AddEmojiLastUserID != "u1" {
-		t.Errorf("game/user = %s/%s", uc.AddEmojiLastGameID, uc.AddEmojiLastUserID)
-	}
-	if uc.AddEmojiLastEmoji != "🔥" {
-		t.Errorf("emoji = %q, want 🔥", uc.AddEmojiLastEmoji)
-	}
-}
-
-func TestAddEmoji_UsecaseError_500(t *testing.T) {
-	uc := newMockUsecase()
-	uc.AddEmojiFn = func(ctx context.Context, gameID, userID, emoji string) error {
-		return errSentinel
-	}
-	view := &MockView{}
-	srv := newServer(uc, view)
-
-	r := setGameID(
-		withSession(newReq("POST", "/game/g1/emoji", strings.NewReader("emoji=x")), "u1", "nick"),
-		"g1",
-	)
-	r.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	w := httptest.NewRecorder()
-
-	srv.AddEmoji(w, r)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", w.Code)
-	}
-}
-
 // --- Guess -------------------------------------------------------------
 
 func TestGuess_Correct_SetsHxTriggerAndRendersSystemMsg(t *testing.T) {

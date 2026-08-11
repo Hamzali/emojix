@@ -116,6 +116,17 @@ func TestRenderEveryTemplate(t *testing.T) {
 			},
 		},
 		{
+			name:     "renderGamePageTellerEmojiKeyboard",
+			contains: "emoji-keyboard",
+			render: func(buf *bytes.Buffer) error {
+				return view.renderGamePage(buf, GamePageViewParam{
+					GameID:        "game-1",
+					IsTeller:      true,
+					EmojiKeyboard: TellerEmojiKeyboard,
+				})
+			},
+		},
+		{
 			name:     "renderGameWord",
 			contains: "letter is-blank",
 			render: func(buf *bytes.Buffer) error {

@@ -24,7 +24,7 @@
       <section
         class="players"
         hx-get="/game/{{ .GameID }}/leaderboard"
-        hx-trigger="sse:left,sse:join,sse:guessed,guessed from:body"
+        hx-trigger="sse:left,sse:join,sse:guessed,sse:msg,guessed from:body"
       >
         {{ template "leaderboard" . }}
       </section>
@@ -93,25 +93,6 @@
 
           {{ if .IsTeller }}
             <p class="teller-note">You're the teller. Others are guessing.</p>
-            <form
-              class="emoji-form"
-              hx-post="/game/{{ .GameID }}/emoji"
-              hx-swap="none"
-              hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
-            >
-              <label class="sr-only" for="emoji-input">Add emoji</label>
-              <input
-                id="emoji-input"
-                name="emoji"
-                type="text"
-                placeholder="Add emoji…"
-                required
-                autocomplete="off"
-                maxlength="32"
-                inputmode="text"
-              />
-              <button type="submit" class="btn-primary">Add</button>
-            </form>
           {{ else if $hasGuessed }}
             <p class="guessed-note">You got it.</p>
           {{ else }}
@@ -150,24 +131,52 @@
             {{ template "game-msg" . }}
           {{ end }}
         </div>
-        <form
-          class="chat-form"
-          hx-post="/game/{{ .GameID }}/message"
-          hx-target="#messages"
-          hx-swap="beforeend"
-          hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
-        >
-          <label class="sr-only" for="chat-input">Message</label>
-          <textarea
-            id="chat-input"
-            name="content"
-            placeholder="Say something"
-            rows="1"
-            required
-            autocomplete="off"
-          ></textarea>
-          <button type="submit" class="btn-chat">Send</button>
-        </form>
+        {{ if .IsTeller }}
+          <div class="emoji-keyboard" aria-label="Emoji keyboard">
+            {{ range .EmojiKeyboard }}
+              <button type="button" class="emoji-key" data-emoji="{{ . }}" aria-label="{{ . }}">{{ . }}</button>
+            {{ end }}
+          </div>
+          <form
+            class="chat-form teller-chat"
+            hx-post="/game/{{ .GameID }}/message"
+            hx-target="#messages"
+            hx-swap="beforeend"
+            hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
+          >
+            <label class="sr-only" for="chat-input">Emoji message</label>
+            <input
+              id="chat-input"
+              name="content"
+              type="text"
+              placeholder="Tap emoji…"
+              required
+              readonly
+              autocomplete="off"
+            />
+            <button type="submit" class="btn-chat">Send</button>
+          </form>
+          <p class="teller-chat-note">Emoji only · −2 pts per message</p>
+        {{ else }}
+          <form
+            class="chat-form"
+            hx-post="/game/{{ .GameID }}/message"
+            hx-target="#messages"
+            hx-swap="beforeend"
+            hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
+          >
+            <label class="sr-only" for="chat-input">Message</label>
+            <textarea
+              id="chat-input"
+              name="content"
+              placeholder="Say something"
+              rows="1"
+              required
+              autocomplete="off"
+            ></textarea>
+            <button type="submit" class="btn-chat">Send</button>
+          </form>
+        {{ end }}
       </section>
     </div>
 
@@ -269,6 +278,13 @@
           });
         }
 
+        const chatInput = root.querySelector("#chat-input");
+        root.querySelectorAll(".emoji-key").forEach((key) => {
+          key.addEventListener("click", () => {
+            if (!chatInput) return;
+            chatInput.value += key.dataset.emoji || "";
+          });
+        });
       })();
 
       // Hx-Trigger events land on body; guard so root swaps don't stack handlers.

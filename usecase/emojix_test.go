@@ -13,7 +13,6 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
-	"strings"
 	"testing"
 	"time"
 )
@@ -1633,6 +1632,105 @@ func TestMessage(t *testing.T) {
 		}
 		assertNoPub(t, pubCh)
 	})
+
+	t.Run("empty content rejected", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				t.Error("must not load turn for empty message")
+				return model.GameTurn{}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, &servicetest.MockGameNotifier{}, &servicetest.MockGameLoop{}, service.NewRealClock())
+		err := uc.Message(context.Background(), gameID, userID, "   ")
+		if !errors.Is(err, usecase.ErrEmptyMessage) {
+			t.Fatalf("err = %v, want ErrEmptyMessage", err)
+		}
+	})
+
+	t.Run("teller emoji message applies score penalty", func(t *testing.T) {
+		var gotScore int
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{TellerID: userID, StartedAt: time.Now().Add(-time.Second), ID: turnID}, nil
+			},
+			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
+				assertCalledWith(t, "Content", "🔥🍎", content)
+				return model.Message{ID: "m-9"}, nil
+			},
+			AddScoreMock: func(ctx context.Context, g, u, messageID, tid string, score int) error {
+				assertCalledWith(t, "UserID", userID, u)
+				assertCalledWith(t, "MessageID", "m-9", messageID)
+				assertCalledWith(t, "TurnID", turnID, tid)
+				gotScore = score
+				return nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc := usecase.NewEmojixUsecase(murFor("Teller", nil), mgr, nil, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
+
+		if err := uc.Message(context.Background(), gameID, userID, "🔥🍎"); err != nil {
+			t.Fatalf("Message: %v", err)
+		}
+		if !mgr.AddScoreCalled {
+			t.Fatal("expected AddScore penalty")
+		}
+		if gotScore != -2 {
+			t.Errorf("penalty = %d, want -2", gotScore)
+		}
+		_ = drainPub(t, pubCh, 1)
+	})
+
+	t.Run("teller text message rejected without send or score", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{TellerID: userID, StartedAt: time.Now().Add(-time.Second), ID: turnID}, nil
+			},
+			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
+				t.Error("SendMessage must not run for non-emoji teller chat")
+				return model.Message{}, nil
+			},
+			AddScoreMock: func(ctx context.Context, g, u, messageID, tid string, score int) error {
+				t.Error("AddScore must not run for rejected teller chat")
+				return nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc := usecase.NewEmojixUsecase(murFor("Teller", nil), mgr, nil, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
+
+		err := uc.Message(context.Background(), gameID, userID, "the word is cat")
+		if !errors.Is(err, usecase.ErrTellerEmojiOnly) {
+			t.Fatalf("err = %v, want ErrTellerEmojiOnly", err)
+		}
+		assertNoPub(t, pubCh)
+	})
+
+	t.Run("guesser free text does not apply score penalty", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{TellerID: "teller-other", StartedAt: time.Now().Add(-time.Second), ID: turnID}, nil
+			},
+			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
+				return model.Message{ID: "m-1"}, nil
+			},
+			AddScoreMock: func(ctx context.Context, g, u, messageID, tid string, score int) error {
+				t.Error("guesser chat must not AddScore")
+				return nil
+			},
+		}
+		pubCh := make(chan service.GameNotification, 1)
+		mgn := &servicetest.MockGameNotifier{PubMock: func(g, u string, n service.GameNotification) { pubCh <- n }}
+		uc := usecase.NewEmojixUsecase(murFor("Nick1", nil), mgr, nil, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
+
+		if err := uc.Message(context.Background(), gameID, userID, "hello"); err != nil {
+			t.Fatalf("Message: %v", err)
+		}
+		if mgr.AddScoreCalled {
+			t.Error("AddScore must not be called for guesser")
+		}
+		_ = drainPub(t, pubCh, 1)
+	})
 }
 
 // --- T10: TestLeaderboard + TestGameWord ---
@@ -2238,121 +2336,25 @@ func TestPickWord(t *testing.T) {
 	})
 }
 
-func TestAddEmoji(t *testing.T) {
-	gameID := "game-1"
-	tellerID := "teller-1"
-	turnID := "turn-1"
-	started := time.Now().Add(-5 * time.Second)
-
-	activeTurn := model.GameTurn{
-		ID: turnID, GameID: gameID, TellerID: tellerID,
-		WordID: "w-1", EmojiHint: "🍎", StartedAt: started,
+func TestIsEmojiOnly(t *testing.T) {
+	cases := []struct {
+		in   string
+		want bool
+	}{
+		{"🔥", true},
+		{"🍎🍌", true},
+		{"  🎉  ", true},
+		{"hello", false},
+		{"a🔥", false},
+		{"🔥2", false},
+		{"", false},
+		{"   ", false},
 	}
-
-	t.Run("teller appends and pubs full hint", func(t *testing.T) {
-		mgr := &repotest.MockGameRepository{
-			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				return activeTurn, nil
-			},
-			SetTurnEmojiHintMock: func(ctx context.Context, tid, hint string) error {
-				assertCalledWith(t, "TurnID", turnID, tid)
-				assertCalledWith(t, "Hint", "🍎🔥", hint)
-				return nil
-			},
+	for _, tc := range cases {
+		if got := usecase.IsEmojiOnly(tc.in); got != tc.want {
+			t.Errorf("IsEmojiOnly(%q) = %v, want %v", tc.in, got, tc.want)
 		}
-		pubAllCh := make(chan service.GameNotification, 1)
-		mgn := &servicetest.MockGameNotifier{
-			PubAllMock: func(g string, n service.GameNotification) {
-				assertCalledWith(t, "GameID", gameID, g)
-				pubAllCh <- n
-			},
-		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
-
-		if err := uc.AddEmoji(context.Background(), gameID, tellerID, "🔥"); err != nil {
-			t.Fatalf("AddEmoji: %v", err)
-		}
-		if !mgr.SetTurnEmojiHintCalled {
-			t.Error("expected SetTurnEmojiHint")
-		}
-		if mgr.SetTurnEmojiHintLast != "🍎🔥" {
-			t.Errorf("persisted hint = %q, want 🍎🔥", mgr.SetTurnEmojiHintLast)
-		}
-		select {
-		case n := <-pubAllCh:
-			if n.GetType() != "emoji" {
-				t.Errorf("type = %q, want emoji", n.GetType())
-			}
-			if n.GetData() != "🍎🔥" {
-				t.Errorf("data = %q, want 🍎🔥", n.GetData())
-			}
-		case <-time.After(time.Second):
-			t.Fatal("expected emoji pub")
-		}
-	})
-
-	t.Run("rejects non-teller", func(t *testing.T) {
-		mgr := &repotest.MockGameRepository{
-			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				return activeTurn, nil
-			},
-		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, &servicetest.MockGameNotifier{}, &servicetest.MockGameLoop{}, service.NewRealClock())
-		err := uc.AddEmoji(context.Background(), gameID, "guesser", "🔥")
-		if !errors.Is(err, usecase.ErrNotTeller) {
-			t.Fatalf("err = %v, want ErrNotTeller", err)
-		}
-		if mgr.SetTurnEmojiHintCalled {
-			t.Error("must not persist")
-		}
-	})
-
-	t.Run("rejects over max rune length", func(t *testing.T) {
-		// 31 runes already on board; appending 2 more exceeds 32.
-		longBase := strings.Repeat("a", 31)
-		mgr := &repotest.MockGameRepository{
-			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				tr := activeTurn
-				tr.EmojiHint = longBase
-				return tr, nil
-			},
-		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, &servicetest.MockGameNotifier{}, &servicetest.MockGameLoop{}, service.NewRealClock())
-		err := uc.AddEmoji(context.Background(), gameID, tellerID, "xy")
-		if !errors.Is(err, usecase.ErrEmojiHintTooLong) {
-			t.Fatalf("err = %v, want ErrEmojiHintTooLong", err)
-		}
-		if mgr.SetTurnEmojiHintCalled {
-			t.Error("must not persist")
-		}
-	})
-
-	t.Run("rejects when awaiting pick", func(t *testing.T) {
-		mgr := &repotest.MockGameRepository{
-			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				return model.GameTurn{ID: turnID, TellerID: tellerID, WordID: ""}, nil
-			},
-		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, &servicetest.MockGameNotifier{}, &servicetest.MockGameLoop{}, service.NewRealClock())
-		err := uc.AddEmoji(context.Background(), gameID, tellerID, "🔥")
-		if !errors.Is(err, usecase.ErrTurnNotActive) {
-			t.Fatalf("err = %v, want ErrTurnNotActive", err)
-		}
-	})
-
-	t.Run("rejects empty emoji", func(t *testing.T) {
-		mgr := &repotest.MockGameRepository{
-			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				t.Error("should not load turn for empty emoji")
-				return activeTurn, nil
-			},
-		}
-		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, &servicetest.MockGameNotifier{}, &servicetest.MockGameLoop{}, service.NewRealClock())
-		err := uc.AddEmoji(context.Background(), gameID, tellerID, "   ")
-		if !errors.Is(err, usecase.ErrEmptyEmoji) {
-			t.Fatalf("err = %v, want ErrEmptyEmoji", err)
-		}
-	})
+	}
 }
 
 func TestGameState_UsesTurnEmojiHint(t *testing.T) {
