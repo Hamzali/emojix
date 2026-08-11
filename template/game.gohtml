@@ -133,31 +133,25 @@
         </div>
         {{ if .IsTeller }}
           <div class="chat-compose">
-            <div class="emoji-keyboard" aria-label="Emoji keyboard">
-              {{ range .EmojiKeyboard }}
-                <button type="button" class="emoji-key" data-emoji="{{ . }}" aria-label="{{ . }}">{{ . }}</button>
-              {{ end }}
-            </div>
+            {{/* Each key is a submit button: clicked value is the only content posted. No JS. */}}
             <form
-              class="chat-form teller-chat"
+              class="emoji-keyboard"
+              aria-label="Emoji keyboard"
               hx-post="/game/{{ .GameID }}/message"
               hx-target="#messages"
               hx-swap="beforeend"
-              hx-on:htmx:after-request="if(event.detail.successful) event.target.reset()"
             >
-              <label class="sr-only" for="chat-input">Emoji message</label>
-              <input
-                id="chat-input"
-                name="content"
-                type="text"
-                placeholder="Tap emoji…"
-                required
-                readonly
-                autocomplete="off"
-              />
-              <button type="submit" class="btn-chat">Send</button>
+              {{ range .EmojiKeyboard }}
+                <button
+                  type="submit"
+                  class="emoji-key"
+                  name="content"
+                  value="{{ . }}"
+                  aria-label="Send {{ . }}"
+                >{{ . }}</button>
+              {{ end }}
             </form>
-            <p class="teller-chat-note">Emoji only · −2 pts per message</p>
+            <p class="teller-chat-note">Tap an emoji to send · −2 pts each</p>
           </div>
         {{ else }}
           <div class="chat-compose">
@@ -282,19 +276,11 @@
           });
         }
 
-        root.addEventListener("click", (e) => {
-          const key = e.target.closest(".emoji-key");
-          if (!key || !root.contains(key)) return;
-          e.preventDefault();
-          const input = root.querySelector(".teller-chat [name=content]");
-          if (!input) return;
-          input.value += key.getAttribute("data-emoji") || "";
-        });
       })();
 
-      // Hx-Trigger events land on body; guard so root swaps don't stack handlers.
-      if (!document.body.dataset.emojixWrongguess) {
-        document.body.dataset.emojixWrongguess = "1";
+      // Body-level once: survives HTMX .root swaps (inline root scripts do not re-run).
+      if (!document.body.dataset.emojixUi) {
+        document.body.dataset.emojixUi = "1";
         document.body.addEventListener("wrongguess", () => {
           const flash = document.querySelector(".guess-flash");
           if (!flash) return;
