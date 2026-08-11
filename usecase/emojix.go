@@ -422,8 +422,8 @@ var (
 	ErrEmptyMessage    = errors.New("message is empty")
 )
 
-// tellerMessagePenalty is subtracted from the teller's score for each chat
-// message so extra hinting is costly (teller earns +5 per correct guess).
+// tellerMessagePenalty is taken from the teller's current-turn points only
+// (not banked totals). Floor is 0 — messages are free once turn points are gone.
 const tellerMessagePenalty = 2
 
 type WordPickedNotification struct{}
@@ -764,9 +764,25 @@ func (e *emojixUsecase) Message(ctx context.Context, gameID string, userID strin
 	}
 
 	if isTeller {
-		// ponytail: non-atomic message+penalty; UOW if we ever see partial fails
-		if err := e.gameRepo.AddScore(ctx, gameID, userID, msg.ID, turn.ID, -tellerMessagePenalty); err != nil {
+		scores, err := e.gameRepo.GetScores(ctx, gameID)
+		if err != nil {
 			return err
+		}
+		turnPts := 0
+		for _, s := range scores {
+			if s.PlayerID == userID && s.TurnID == turn.ID {
+				turnPts += s.Score
+			}
+		}
+		if turnPts > 0 {
+			penalty := tellerMessagePenalty
+			if penalty > turnPts {
+				penalty = turnPts
+			}
+			// ponytail: non-atomic message+penalty; UOW if we ever see partial fails
+			if err := e.gameRepo.AddScore(ctx, gameID, userID, msg.ID, turn.ID, -penalty); err != nil {
+				return err
+			}
 		}
 	}
 
@@ -795,13 +811,17 @@ func (e *emojixUsecase) buildLeaderboard(currentUserID string, latestTurnID stri
 	}
 
 	for _, player := range activePlayers {
+		score := scoreMap[player.ID]
+		if score < 0 {
+			score = 0
+		}
 		entry := model.LeaderboardEntry{
 			PlayerID:    player.ID,
 			Nickname:    player.Nickname,
 			Me:          player.ID == currentUserID,
 			GuessedWord: isGuessedWord(player.ID),
 			IsTeller:    player.ID == tellerID,
-			Score:       scoreMap[player.ID],
+			Score:       score,
 		}
 
 		leaderboardEntries = append(leaderboardEntries, entry)
