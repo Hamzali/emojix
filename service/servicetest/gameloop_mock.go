@@ -11,7 +11,7 @@ import (
 type MockGameLoop struct {
 	service.GameLoop
 
-	StartMock                 func(ctx context.Context, gameID string, duration time.Duration)
+	StartMock                 func(ctx context.Context, gameID string, turnDuration, pickDuration time.Duration)
 	StartCalled               bool
 	BeginTurnMock             func(gameID string)
 	BeginTurnCalled           bool
@@ -26,10 +26,10 @@ type MockGameLoop struct {
 	StopCalled                bool
 }
 
-func (m *MockGameLoop) Start(ctx context.Context, gameID string, duration time.Duration) {
+func (m *MockGameLoop) Start(ctx context.Context, gameID string, turnDuration, pickDuration time.Duration) {
 	m.StartCalled = true
 	if m.StartMock != nil {
-		m.StartMock(ctx, gameID, duration)
+		m.StartMock(ctx, gameID, turnDuration, pickDuration)
 	}
 }
 

@@ -137,7 +137,10 @@ func MaskMessage(content, word, nickname string) (display string, isSystem bool)
 	return content, false
 }
 
-const turnDuration = time.Second * 60
+const (
+	turnDuration = time.Second * 60
+	pickDuration = time.Second * 30 // skip teller if they don't pick
+)
 
 // ErrNoWords is returned when a new turn cannot be created because the word
 // repository has no words to pick from.
@@ -186,6 +189,8 @@ func (e *emojixUsecase) GameState(ctx context.Context, gameID string, currentUse
 	gameState.Leaderboard = leaderboard
 
 	if gameState.AwaitingPick {
+		// Pick countdown starts when the turn row is created.
+		gameState.TurnStartedAt = latestTurn.CreatedAt
 		if gameState.IsTeller {
 			opts, err := e.loadWordOptions(ctx, latestTurn)
 			if err != nil {
@@ -409,7 +414,7 @@ func (e *emojixUsecase) InitGame(ctx context.Context, userID string, listID stri
 	}
 
 	// Start the game loop AFTER commit. Timer waits for BeginTurn (teller pick).
-	e.gameLoop.Start(context.Background(), game.ID, turnDuration)
+	e.gameLoop.Start(context.Background(), game.ID, turnDuration, pickDuration)
 
 	return game, nil
 }

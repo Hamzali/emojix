@@ -71,3 +71,10 @@ func (fc *FakeClock) Now() time.Time {
 	defer fc.mu.Unlock()
 	return fc.now
 }
+
+// PendingTimers is the number of After timers not yet fired (test sync helper).
+func (fc *FakeClock) PendingTimers() int {
+	fc.mu.Lock()
+	defer fc.mu.Unlock()
+	return len(fc.timers)
+}

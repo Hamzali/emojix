@@ -772,15 +772,16 @@ func TestInitGame(t *testing.T) {
 
 		committed := false
 		var startGameID string
-		var startDur time.Duration
+		var startTurn, startPick time.Duration
 		startCalled := make(chan struct{}, 1)
 		gl := &servicetest.MockGameLoop{
-			StartMock: func(ctx context.Context, gameID string, duration time.Duration) {
+			StartMock: func(ctx context.Context, gameID string, turnDuration, pickDuration time.Duration) {
 				if !committed {
 					t.Error("gameLoop.Start called before uow.Commit")
 				}
 				startGameID = gameID
-				startDur = duration
+				startTurn = turnDuration
+				startPick = pickDuration
 				startCalled <- struct{}{}
 			},
 		}
@@ -815,8 +816,11 @@ func TestInitGame(t *testing.T) {
 		if startGameID != "game-1" {
 			t.Errorf("Start gameID: got %q, want game-1", startGameID)
 		}
-		if startDur != time.Minute {
-			t.Errorf("Start duration: got %v, want %v", startDur, time.Minute)
+		if startTurn != time.Minute {
+			t.Errorf("Start turn duration: got %v, want %v", startTurn, time.Minute)
+		}
+		if startPick != 30*time.Second {
+			t.Errorf("Start pick duration: got %v, want %v", startPick, 30*time.Second)
 		}
 	})
 

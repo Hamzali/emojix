@@ -9,6 +9,11 @@ import (
 	"emojix/service/servicetest"
 )
 
+const (
+	testTurn = 60 * time.Second
+	testPick = 30 * time.Second
+)
+
 func TestGameLoop_Timeout(t *testing.T) {
 	fc := servicetest.NewFakeClock()
 	calls := make(chan string, 1)
@@ -18,7 +23,7 @@ func TestGameLoop_Timeout(t *testing.T) {
 		calls <- gameID
 	})
 
-	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.Start(context.Background(), "g1", testTurn, testPick)
 	gl.BeginTurn("g1")
 	fc.Advance(61 * time.Second)
 
@@ -32,7 +37,7 @@ func TestGameLoop_Timeout(t *testing.T) {
 	}
 }
 
-func TestGameLoop_NoTimerUntilBeginTurn(t *testing.T) {
+func TestGameLoop_NoPlayTimerUntilBeginTurn(t *testing.T) {
 	fc := servicetest.NewFakeClock()
 	calls := make(chan string, 1)
 
@@ -41,14 +46,51 @@ func TestGameLoop_NoTimerUntilBeginTurn(t *testing.T) {
 		calls <- gameID
 	})
 
-	gl.Start(context.Background(), "g1", 60*time.Second)
+	// Long pick window so we can prove play timer is not running yet.
+	gl.Start(context.Background(), "g1", testTurn, 5*time.Minute)
 	fc.Advance(120 * time.Second)
 
 	select {
 	case <-calls:
-		t.Fatal("OnTurnEnd fired before BeginTurn")
+		t.Fatal("OnTurnEnd fired before BeginTurn / pick timeout")
 	case <-time.After(20 * time.Millisecond):
 	}
+}
+
+func TestGameLoop_PickTimeoutSkipsTeller(t *testing.T) {
+	fc := servicetest.NewFakeClock()
+	calls := make(chan string, 1)
+
+	gl := service.NewGameLoop(fc)
+	gl.SetOnTurnEndHandler(func(ctx context.Context, gameID string) {
+		calls <- gameID
+	})
+
+	gl.Start(context.Background(), "g1", testTurn, testPick)
+	// run() registers the pick timer asynchronously; wait until it exists.
+	waitForTimers(t, fc, 1)
+	fc.Advance(testPick + time.Second)
+
+	select {
+	case id := <-calls:
+		if id != "g1" {
+			t.Fatalf("expected g1, got %s", id)
+		}
+	case <-time.After(time.Second):
+		t.Fatal("OnTurnEnd not called after pick timeout")
+	}
+}
+
+func waitForTimers(t *testing.T, fc *servicetest.FakeClock, n int) {
+	t.Helper()
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if fc.PendingTimers() >= n {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %d fake timers (have %d)", n, fc.PendingTimers())
 }
 
 func TestGameLoop_EndGameTurn(t *testing.T) {
@@ -60,7 +102,7 @@ func TestGameLoop_EndGameTurn(t *testing.T) {
 		calls <- gameID
 	})
 
-	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.Start(context.Background(), "g1", testTurn, testPick)
 	gl.BeginTurn("g1")
 	gl.EndGameTurn("g1") // signal early
 
@@ -83,7 +125,7 @@ func TestGameLoop_TimeoutBeforeAllGuessed(t *testing.T) {
 		calls <- gameID
 	})
 
-	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.Start(context.Background(), "g1", testTurn, testPick)
 	gl.BeginTurn("g1")
 	fc.Advance(30 * time.Second) // advance partway
 	gl.EndGameTurn("g1")         // all guessed
@@ -115,7 +157,7 @@ func TestGameLoop_DoubleEndGameTurn(t *testing.T) {
 		calls <- struct{}{}
 	})
 
-	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.Start(context.Background(), "g1", testTurn, testPick)
 	gl.BeginTurn("g1")
 	gl.EndGameTurn("g1")
 	gl.EndGameTurn("g1") // second send should be dropped (buffered ch + default)
@@ -143,8 +185,8 @@ func TestGameLoop_StartDuplicateNoOp(t *testing.T) {
 		calls <- gameID
 	})
 
-	gl.Start(context.Background(), "g1", 60*time.Second)
-	gl.Start(context.Background(), "g1", 30*time.Second) // should be no-op, first Start still active
+	gl.Start(context.Background(), "g1", testTurn, testPick)
+	gl.Start(context.Background(), "g1", 30*time.Second, testPick) // no-op
 	gl.BeginTurn("g1")
 
 	fc.Advance(31 * time.Second) // past 30s, but NOT past 60s
@@ -177,7 +219,7 @@ func TestGameLoop_AllGuessedAfterStop(t *testing.T) {
 		calls <- gameID
 	})
 
-	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.Start(context.Background(), "g1", testTurn, testPick)
 	gl.StopGame("g1")
 	gl.BeginTurn("g1")
 	gl.EndGameTurn("g1") // no-op, should not trigger callback
@@ -198,7 +240,7 @@ func TestGameLoop_AllGuessedWrongGameID(t *testing.T) {
 		calls <- gameID
 	})
 
-	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.Start(context.Background(), "g1", testTurn, testPick)
 	gl.BeginTurn("g1")
 	gl.EndGameTurn("nonexistent") // wrong gameID, no-op
 
@@ -223,8 +265,8 @@ func TestGameLoop_StopAll(t *testing.T) {
 		calls <- gameID
 	})
 
-	gl.Start(context.Background(), "g1", 60*time.Second)
-	gl.Start(context.Background(), "g2", 60*time.Second)
+	gl.Start(context.Background(), "g1", testTurn, testPick)
+	gl.Start(context.Background(), "g2", testTurn, testPick)
 	gl.Stop()
 
 	// No callbacks should fire after Stop
@@ -245,7 +287,7 @@ func TestGameLoop_MultipleTurns(t *testing.T) {
 		calls <- gameID
 	})
 
-	gl.Start(context.Background(), "g1", 60*time.Second)
+	gl.Start(context.Background(), "g1", testTurn, testPick)
 
 	// Turn 1: end early
 	gl.BeginTurn("g1")

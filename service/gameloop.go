@@ -30,9 +30,10 @@ func (RealClock) Now() time.Time {
 
 type GameLoop interface {
 	// Start begins the game loop for a game. Called once per game.
-	// The first turn timer does not start until BeginTurn is called.
+	// pickDuration bounds the wait for BeginTurn; on expiry OnTurnEnd runs so the
+	// next teller can be seated. turnDuration bounds play after BeginTurn.
 	// Logs a warning and returns early if gameID already has an active loop.
-	Start(ctx context.Context, gameID string, duration time.Duration)
+	Start(ctx context.Context, gameID string, turnDuration, pickDuration time.Duration)
 
 	// BeginTurn starts the turn timer after the teller has picked a word.
 	// Blocks until the timer is armed so EndGameTurn/clock.Advance are safe after return.
@@ -82,7 +83,7 @@ func (l *gameLoop) SetOnTurnEndHandler(handler OnTurnEndHandler) {
 	l.onTurnEnd = handler
 }
 
-func (l *gameLoop) Start(ctx context.Context, gameID string, duration time.Duration) {
+func (l *gameLoop) Start(ctx context.Context, gameID string, turnDuration, pickDuration time.Duration) {
 	l.mu.Lock()
 	if _, ok := l.cancels[gameID]; ok {
 		l.mu.Unlock()
@@ -92,13 +93,13 @@ func (l *gameLoop) Start(ctx context.Context, gameID string, duration time.Durat
 	ctx, cancel := context.WithCancel(ctx)
 	l.cancels[gameID] = cancel
 
-	// Wait for BeginTurn before the first timer. End channel is registered only
+	// Wait for BeginTurn before the play timer. End channel is registered only
 	// while a turn is active so EndGameTurn during pick phase is a no-op.
 	beginCh := make(chan struct{}, 1)
 	l.beginChs[gameID] = beginCh
 	l.mu.Unlock()
 
-	go l.run(ctx, gameID, duration, beginCh)
+	go l.run(ctx, gameID, turnDuration, pickDuration, beginCh)
 }
 
 func (l *gameLoop) BeginTurn(gameID string) {
@@ -179,18 +180,31 @@ func (l *gameLoop) Stop() {
 	l.cancels = make(map[string]context.CancelFunc)
 }
 
-func (l *gameLoop) run(ctx context.Context, gameID string, duration time.Duration, beginCh chan struct{}) {
+func (l *gameLoop) run(ctx context.Context, gameID string, turnDuration, pickDuration time.Duration, beginCh chan struct{}) {
 	for {
-		// Wait for teller pick before starting the turn timer.
+		// Wait for teller pick; skip to next teller if they stall.
+		pickTimer := l.clock.After(pickDuration)
+		selected := false
 		select {
 		case <-ctx.Done():
 			return
 		case <-beginCh:
+			selected = true
+		case <-pickTimer:
+		}
+
+		if !selected {
+			// Drop any late BeginTurn and reseat via OnTurnEnd.
+			l.resetBegin(gameID, &beginCh)
+			if l.onTurnEnd != nil {
+				l.onTurnEnd(context.Background(), gameID)
+			}
+			continue
 		}
 
 		endCh := make(chan struct{}, 1)
 		// Register timer before signaling armed so Advance after BeginTurn is reliable.
-		timerCh := l.clock.After(duration)
+		timerCh := l.clock.After(turnDuration)
 
 		l.mu.Lock()
 		l.endChs[gameID] = endCh
@@ -219,5 +233,20 @@ func (l *gameLoop) run(ctx context.Context, gameID string, duration time.Duratio
 		if l.onTurnEnd != nil {
 			l.onTurnEnd(context.Background(), gameID)
 		}
+	}
+}
+
+func (l *gameLoop) resetBegin(gameID string, beginCh *chan struct{}) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	*beginCh = make(chan struct{}, 1)
+	l.beginChs[gameID] = *beginCh
+	if armed, ok := l.armedChs[gameID]; ok {
+		select {
+		case <-armed:
+		default:
+			close(armed)
+		}
+		delete(l.armedChs, gameID)
 	}
 }

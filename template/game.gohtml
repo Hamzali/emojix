@@ -35,6 +35,22 @@
         {{ if .TurnEnded }}
           <p class="pick-wait turn-wait">Next turn…</p>
         {{ else if .AwaitingPick }}
+          <div class="turn-timer-row">
+            <div
+              class="turn-timer"
+              role="progressbar"
+              aria-label="Pick timer"
+              aria-valuemin="0"
+              aria-valuemax="30"
+            >
+              <div
+                class="turn-timer-bar"
+                data-start="{{ .TurnStartedAt.UnixMilli }}"
+                data-duration="30000"
+              ></div>
+            </div>
+            <span class="turn-timer-text" aria-hidden="true">0:30</span>
+          </div>
           {{ if .IsTeller }}
             <p class="pick-prompt">Pick a word to tell</p>
             <div class="word-options">
@@ -74,6 +90,7 @@
               <div
                 class="turn-timer-bar"
                 data-start="{{ .TurnStartedAt.UnixMilli }}"
+                data-duration="60000"
               ></div>
             </div>
             <span class="turn-timer-text" aria-hidden="true">1:00</span>
@@ -219,13 +236,13 @@
           });
         }
 
-        const TURN_DURATION = 60000;
         const bar = root.querySelector(".turn-timer-bar");
         const track = root.querySelector(".turn-timer");
         const text = root.querySelector(".turn-timer-text");
         if (bar) {
           const startMs = parseInt(bar.dataset.start, 10);
-          if (!isNaN(startMs)) {
+          const durationMs = parseInt(bar.dataset.duration || "60000", 10);
+          if (!isNaN(startMs) && durationMs > 0) {
             function formatRemaining(ms) {
               const secs = Math.max(0, Math.ceil(ms / 1000));
               const m = Math.floor(secs / 60);
@@ -234,8 +251,8 @@
             }
 
             function update() {
-              const remaining = Math.max(0, TURN_DURATION - (Date.now() - startMs));
-              const fraction = remaining / TURN_DURATION;
+              const remaining = Math.max(0, durationMs - (Date.now() - startMs));
+              const fraction = remaining / durationMs;
               bar.style.width = fraction * 100 + "%";
               if (track) {
                 track.setAttribute("aria-valuenow", String(Math.ceil(remaining / 1000)));
