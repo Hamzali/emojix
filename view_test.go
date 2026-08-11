@@ -99,6 +99,23 @@ func TestRenderEveryTemplate(t *testing.T) {
 			},
 		},
 		{
+			name:     "renderGamePageInPlaceTurnRefresh",
+			contains: `hx-trigger="sse:turnended,sse:wordpicked,sse:newturn"`,
+			render: func(buf *bytes.Buffer) error {
+				return view.renderGamePage(buf, GamePageViewParam{GameID: "game-1"})
+			},
+		},
+		{
+			name:     "renderGamePageTurnEnded",
+			contains: "Next turn",
+			render: func(buf *bytes.Buffer) error {
+				return view.renderGamePage(buf, GamePageViewParam{
+					GameID:    "game-1",
+					TurnEnded: true,
+				})
+			},
+		},
+		{
 			name:     "renderGameWord",
 			contains: "letter is-blank",
 			render: func(buf *bytes.Buffer) error {

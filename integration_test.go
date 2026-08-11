@@ -212,17 +212,24 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 		t.Errorf("Hx-Trigger = %q, want guessed", got)
 	}
 
-	// 8. Only guesser needed to finish (teller excluded) → loading redirect.
+	// 8. Only guesser needed to finish (teller excluded) → inline waiting, no loading exile.
 	resp = doWithCookies(t, client, "GET", ts.URL+gamePath, nil, guesserCookies)
+	body, err = io.ReadAll(resp.Body)
 	resp.Body.Close()
-	if resp.StatusCode != http.StatusSeeOther {
-		t.Fatalf("GET %s after guess status = %d, want 303", gamePath, resp.StatusCode)
+	if err != nil {
+		t.Fatal(err)
 	}
-	if loc := resp.Header.Get("Location"); loc != gamePath+"/loading" {
-		t.Errorf("Location = %q, want %s", loc, gamePath+"/loading")
+	if resp.StatusCode != http.StatusOK {
+		t.Fatalf("GET %s after guess status = %d, want 200", gamePath, resp.StatusCode)
+	}
+	if loc := resp.Header.Get("Location"); loc != "" {
+		t.Errorf("Location = %q, want no redirect to loading", loc)
+	}
+	if !strings.Contains(string(body), "Next turn") {
+		t.Errorf("game page missing inline next-turn waiting content")
 	}
 
-	// 9. Loading page renders.
+	// 9. Loading route remains as thin optional fallback.
 	resp = doWithCookies(t, client, "GET", ts.URL+gamePath+"/loading", nil, guesserCookies)
 	body, err = io.ReadAll(resp.Body)
 	resp.Body.Close()

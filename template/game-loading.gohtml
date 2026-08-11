@@ -6,28 +6,11 @@
   <div class="page-center loading-page">
     <p class="loading-marks" aria-hidden="true">🎉</p>
     <h1 class="loading-title">Next turn</h1>
-    <p id="counter" class="countdown" aria-live="polite">5</p>
-    <p class="muted">Hang tight while the board resets.</p>
+    <p class="muted">Board is resetting…</p>
     <a class="btn" href="/game/{{ .GameID }}">Open now</a>
   </div>
 
   <script>
-    function updateCounter() {
-      const el = document.getElementById("counter");
-      const n = Number(el.innerText);
-
-      if (n === 0 || n > 5 || Number.isNaN(n) || !Number.isFinite(n)) {
-        el.innerText = "…";
-        setTimeout(() => location.replace("/game/{{.GameID}}"), 100);
-        return;
-      }
-
-      setTimeout(() => {
-        el.innerText = String(n - 1);
-        updateCounter();
-      }, 1200);
-    }
-
-    updateCounter();
+    setTimeout(() => location.replace("/game/{{.GameID}}"), 800);
   </script>
 {{ end }}

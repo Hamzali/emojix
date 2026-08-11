@@ -537,7 +537,7 @@ func TestGame_RendersGamePageWithMaskedWord(t *testing.T) {
 	}
 }
 
-func TestGame_TurnEnded_Redirects303(t *testing.T) {
+func TestGame_TurnEnded_RendersInlineWaiting(t *testing.T) {
 	uc := newMockUsecase()
 	uc.GameStateFn = func(ctx context.Context, gameID, userID string) (model.GameState, error) {
 		return model.GameState{GameID: "g1", TurnEnded: true}, nil
@@ -550,14 +550,17 @@ func TestGame_TurnEnded_Redirects303(t *testing.T) {
 
 	srv.Game(w, r)
 
-	if w.Code != http.StatusSeeOther {
-		t.Fatalf("status = %d, want 303", w.Code)
+	if w.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", w.Code)
 	}
-	if loc := w.Header().Get("Location"); loc != "/game/g1/loading" {
-		t.Errorf("Location = %q, want /game/g1/loading", loc)
+	if loc := w.Header().Get("Location"); loc != "" {
+		t.Errorf("Location = %q, want no redirect", loc)
 	}
-	if view.renderGamePageCalls != 0 {
-		t.Errorf("renderGamePageCalls = %d, want 0", view.renderGamePageCalls)
+	if view.renderGamePageCalls != 1 {
+		t.Fatalf("renderGamePageCalls = %d, want 1", view.renderGamePageCalls)
+	}
+	if got := view.renderGamePageLastParam; !got.TurnEnded || got.GameID != "g1" {
+		t.Errorf("param = %+v, want TurnEnded=true GameID=g1", got)
 	}
 }
 

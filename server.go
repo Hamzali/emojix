@@ -245,13 +245,6 @@ func (e *webServer) Game(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if gameState.TurnEnded {
-		log.Println("All guessed waiting for new turn!")
-		http.Redirect(w, r, fmt.Sprintf("/game/%s/loading", gameID), http.StatusSeeOther)
-
-		return
-	}
-
 	pageData := GamePageViewParam{
 		GameID:         gameState.GameID,
 		Leaderboard:    gameState.Leaderboard,
@@ -265,6 +258,7 @@ func (e *webServer) Game(w http.ResponseWriter, r *http.Request) {
 		LetterCount:    gameState.LetterCount,
 		WordCount:      gameState.WordCount,
 		WordOptions:    gameState.WordOptions,
+		TurnEnded:      gameState.TurnEnded,
 	}
 	err = e.view.renderGamePage(w, pageData)
 	if err != nil {
