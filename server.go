@@ -352,14 +352,22 @@ func (e *webServer) Guess(w http.ResponseWriter, r *http.Request) {
 	content := r.PostForm.Get("content")
 
 	// process message
-	err = e.emojixUsecase.Guess(ctx, gameID, session.UserID, content)
+	correct, err := e.emojixUsecase.Guess(ctx, gameID, session.UserID, content)
 	if err != nil {
 		e.handleError(w, err, "failed to process guess")
 		return
 	}
 
-	w.Header().Set("Hx-Trigger", "guessed")
-	msg := model.GameStateMessage{Me: true, Content: content, Nickname: session.Nickname}
+	msg := model.GameStateMessage{Me: true, Nickname: session.Nickname}
+	if correct {
+		w.Header().Set("Hx-Trigger", "guessed")
+		msg.Content = usecase.GotItMessage(session.Nickname)
+		msg.IsSystem = true
+	} else {
+		w.Header().Set("Hx-Trigger", "wrongguess")
+		msg.Content = content
+		msg.IsGuess = true
+	}
 	err = e.view.renderGameMsg(w, msg)
 	if err != nil {
 		e.handleError(w, err, "failed to render")
@@ -464,6 +472,7 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 				Me:       userID == msgNotif.UserID,
 				Nickname: msgNotif.Nickname,
 				Content:  msgNotif.Content,
+				IsSystem: msgNotif.IsSystem,
 			}
 			var sseContent strings.Builder
 			err = e.view.renderGameMsg(&sseContent, gameMsg)

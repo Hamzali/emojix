@@ -113,6 +113,15 @@ func TestRenderEveryTemplate(t *testing.T) {
 			},
 		},
 		{
+			name:     "renderGameMsgSystem",
+			contains: "is-system",
+			render: func(buf *bytes.Buffer) error {
+				return view.renderGameMsg(buf, GameMsgViewParam{
+					Content: "Ada got it!", Nickname: "Ada", IsSystem: true,
+				})
+			},
+		},
+		{
 			name:     "renderGameLeaderboard",
 			contains: "n1",
 			render: func(buf *bytes.Buffer) error {

@@ -47,7 +47,7 @@ type MockEmojixUsecase struct {
 	JoinGameLastGameID string
 	JoinGameLastUserID string
 
-	GuessFn         func(ctx context.Context, gameID string, userID string, word string) error
+	GuessFn         func(ctx context.Context, gameID string, userID string, word string) (bool, error)
 	GuessCalls      int
 	GuessLastGameID string
 	GuessLastUserID string
@@ -107,8 +107,8 @@ func newMockUsecase() *MockEmojixUsecase {
 	m.JoinGameFn = func(ctx context.Context, gameID, userID string) error {
 		return nil
 	}
-	m.GuessFn = func(ctx context.Context, gameID, userID, word string) error {
-		return nil
+	m.GuessFn = func(ctx context.Context, gameID, userID, word string) (bool, error) {
+		return true, nil
 	}
 	m.MessageFn = func(ctx context.Context, gameID, userID, word string) error {
 		return nil
@@ -182,7 +182,7 @@ func (m *MockEmojixUsecase) JoinGame(ctx context.Context, gameID string, userID 
 	return m.JoinGameFn(ctx, gameID, userID)
 }
 
-func (m *MockEmojixUsecase) Guess(ctx context.Context, gameID string, userID string, word string) error {
+func (m *MockEmojixUsecase) Guess(ctx context.Context, gameID string, userID string, word string) (bool, error) {
 	m.mu.Lock()
 	m.GuessCalls++
 	m.GuessLastGameID = gameID

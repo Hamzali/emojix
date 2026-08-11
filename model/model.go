@@ -86,6 +86,8 @@ type GameStateMessage struct {
 	Me       bool
 	Content  string
 	Nickname string
+	IsSystem bool // correct-guess announcement, not a chat line
+	IsGuess  bool // wrong-guess line (live response; optional style)
 }
 
 type GameState struct {
