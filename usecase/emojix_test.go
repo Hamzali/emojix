@@ -13,6 +13,7 @@ import (
 	"fmt"
 	"reflect"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 )
@@ -2149,4 +2150,240 @@ func TestOnTurnEnd(t *testing.T) {
 			t.Errorf("StopGame count: got %d, want 1", m.stopCount)
 		}
 	})
+}
+
+func TestPickWord(t *testing.T) {
+	gameID := "game-1"
+	tellerID := "teller-1"
+	turnID := "turn-1"
+	wordID := "w-opt-b"
+
+	baseTurn := model.GameTurn{
+		ID: turnID, GameID: gameID, TellerID: tellerID,
+		OptionA: "w-opt-a", OptionB: wordID, OptionC: "w-opt-c",
+	}
+
+	t.Run("seeds emoji_hint from word.Hint and begins turn", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return baseTurn, nil
+			},
+			SetTurnWordMock: func(ctx context.Context, tid, wid, hint string) error {
+				assertCalledWith(t, "TurnID", turnID, tid)
+				assertCalledWith(t, "WordID", wordID, wid)
+				assertCalledWith(t, "EmojiHint", "🍎🍌", hint)
+				return nil
+			},
+		}
+		mwr := &repotest.MockWordRepository{
+			FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+				assertCalledWith(t, "WordID", wordID, id)
+				return model.Word{ID: wordID, Word: "Apple", Hint: "🍎🍌"}, nil
+			},
+		}
+		beginCh := make(chan string, 1)
+		gl := &servicetest.MockGameLoop{
+			BeginTurnMock: func(g string) { beginCh <- g },
+		}
+		pubAllCh := make(chan service.GameNotification, 1)
+		mgn := &servicetest.MockGameNotifier{
+			PubAllMock: func(g string, n service.GameNotification) {
+				assertCalledWith(t, "GameID", gameID, g)
+				pubAllCh <- n
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, mgn, gl, service.NewRealClock())
+
+		if err := uc.PickWord(context.Background(), gameID, tellerID, wordID); err != nil {
+			t.Fatalf("PickWord: %v", err)
+		}
+		if !mgr.SetTurnWordCalled {
+			t.Error("expected SetTurnWord")
+		}
+		if mgr.SetTurnWordLastHint != "🍎🍌" {
+			t.Errorf("SetTurnWord hint = %q, want 🍎🍌", mgr.SetTurnWordLastHint)
+		}
+		select {
+		case g := <-beginCh:
+			if g != gameID {
+				t.Errorf("BeginTurn game = %q", g)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("expected BeginTurn")
+		}
+		select {
+		case n := <-pubAllCh:
+			if n.GetType() != "wordpicked" {
+				t.Errorf("pub type = %q, want wordpicked", n.GetType())
+			}
+		case <-time.After(time.Second):
+			t.Fatal("expected wordpicked pub")
+		}
+	})
+
+	t.Run("rejects non-teller", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return baseTurn, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, &servicetest.MockGameNotifier{}, &servicetest.MockGameLoop{}, service.NewRealClock())
+		err := uc.PickWord(context.Background(), gameID, "not-teller", wordID)
+		if !errors.Is(err, usecase.ErrNotTeller) {
+			t.Fatalf("err = %v, want ErrNotTeller", err)
+		}
+		if mgr.SetTurnWordCalled {
+			t.Error("SetTurnWord must not be called")
+		}
+	})
+}
+
+func TestAddEmoji(t *testing.T) {
+	gameID := "game-1"
+	tellerID := "teller-1"
+	turnID := "turn-1"
+	started := time.Now().Add(-5 * time.Second)
+
+	activeTurn := model.GameTurn{
+		ID: turnID, GameID: gameID, TellerID: tellerID,
+		WordID: "w-1", EmojiHint: "🍎", StartedAt: started,
+	}
+
+	t.Run("teller appends and pubs full hint", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return activeTurn, nil
+			},
+			SetTurnEmojiHintMock: func(ctx context.Context, tid, hint string) error {
+				assertCalledWith(t, "TurnID", turnID, tid)
+				assertCalledWith(t, "Hint", "🍎🔥", hint)
+				return nil
+			},
+		}
+		pubAllCh := make(chan service.GameNotification, 1)
+		mgn := &servicetest.MockGameNotifier{
+			PubAllMock: func(g string, n service.GameNotification) {
+				assertCalledWith(t, "GameID", gameID, g)
+				pubAllCh <- n
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, mgn, &servicetest.MockGameLoop{}, service.NewRealClock())
+
+		if err := uc.AddEmoji(context.Background(), gameID, tellerID, "🔥"); err != nil {
+			t.Fatalf("AddEmoji: %v", err)
+		}
+		if !mgr.SetTurnEmojiHintCalled {
+			t.Error("expected SetTurnEmojiHint")
+		}
+		if mgr.SetTurnEmojiHintLast != "🍎🔥" {
+			t.Errorf("persisted hint = %q, want 🍎🔥", mgr.SetTurnEmojiHintLast)
+		}
+		select {
+		case n := <-pubAllCh:
+			if n.GetType() != "emoji" {
+				t.Errorf("type = %q, want emoji", n.GetType())
+			}
+			if n.GetData() != "🍎🔥" {
+				t.Errorf("data = %q, want 🍎🔥", n.GetData())
+			}
+		case <-time.After(time.Second):
+			t.Fatal("expected emoji pub")
+		}
+	})
+
+	t.Run("rejects non-teller", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return activeTurn, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, &servicetest.MockGameNotifier{}, &servicetest.MockGameLoop{}, service.NewRealClock())
+		err := uc.AddEmoji(context.Background(), gameID, "guesser", "🔥")
+		if !errors.Is(err, usecase.ErrNotTeller) {
+			t.Fatalf("err = %v, want ErrNotTeller", err)
+		}
+		if mgr.SetTurnEmojiHintCalled {
+			t.Error("must not persist")
+		}
+	})
+
+	t.Run("rejects over max rune length", func(t *testing.T) {
+		// 31 runes already on board; appending 2 more exceeds 32.
+		longBase := strings.Repeat("a", 31)
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				tr := activeTurn
+				tr.EmojiHint = longBase
+				return tr, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, &servicetest.MockGameNotifier{}, &servicetest.MockGameLoop{}, service.NewRealClock())
+		err := uc.AddEmoji(context.Background(), gameID, tellerID, "xy")
+		if !errors.Is(err, usecase.ErrEmojiHintTooLong) {
+			t.Fatalf("err = %v, want ErrEmojiHintTooLong", err)
+		}
+		if mgr.SetTurnEmojiHintCalled {
+			t.Error("must not persist")
+		}
+	})
+
+	t.Run("rejects when awaiting pick", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{ID: turnID, TellerID: tellerID, WordID: ""}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, &servicetest.MockGameNotifier{}, &servicetest.MockGameLoop{}, service.NewRealClock())
+		err := uc.AddEmoji(context.Background(), gameID, tellerID, "🔥")
+		if !errors.Is(err, usecase.ErrTurnNotActive) {
+			t.Fatalf("err = %v, want ErrTurnNotActive", err)
+		}
+	})
+
+	t.Run("rejects empty emoji", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				t.Error("should not load turn for empty emoji")
+				return activeTurn, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(nil, mgr, nil, nil, &servicetest.MockGameNotifier{}, &servicetest.MockGameLoop{}, service.NewRealClock())
+		err := uc.AddEmoji(context.Background(), gameID, tellerID, "   ")
+		if !errors.Is(err, usecase.ErrEmptyEmoji) {
+			t.Fatalf("err = %v, want ErrEmptyEmoji", err)
+		}
+	})
+}
+
+func TestGameState_UsesTurnEmojiHint(t *testing.T) {
+	mgr := &repotest.MockGameRepository{
+		GetPlayersMock: func(ctx context.Context, id string) ([]model.Player, error) {
+			return []model.Player{{ID: "u1", Nickname: "N"}}, nil
+		},
+		GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+			return model.GameTurn{
+				ID: "t1", TellerID: "teller", WordID: "w1",
+				EmojiHint: "🔥🔥", StartedAt: time.Now().Add(-time.Second),
+			}, nil
+		},
+		GetMessagesMock: func(ctx context.Context, id string) ([]model.Message, error) {
+			return nil, nil
+		},
+		GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
+			return nil, nil
+		},
+	}
+	mwr := &repotest.MockWordRepository{
+		FindByIDMock: func(ctx context.Context, id string) (model.Word, error) {
+			return model.Word{ID: "w1", Word: "Hi", Hint: "seed"}, nil
+		},
+	}
+	uc := usecase.NewEmojixUsecase(nil, mgr, mwr, nil, nil, &servicetest.MockGameLoop{}, service.NewRealClock())
+	gs, err := uc.GameState(context.Background(), "g1", "u1")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if gs.Hint != "🔥🔥" {
+		t.Errorf("Hint = %q, want live turn emoji board", gs.Hint)
+	}
 }

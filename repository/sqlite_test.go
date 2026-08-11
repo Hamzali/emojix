@@ -623,7 +623,7 @@ func TestGameRepository(t *testing.T) {
 			t.Errorf("teller: got %q", turn.TellerID)
 		}
 
-		if err := repo.SetTurnWord(context.Background(), turn.ID, "w2"); err != nil {
+		if err := repo.SetTurnWord(context.Background(), turn.ID, "w2", "🍎🍌"); err != nil {
 			t.Fatal(err)
 		}
 		got, err := repo.GetLatestTurn(context.Background(), "game-id")
@@ -633,8 +633,22 @@ func TestGameRepository(t *testing.T) {
 		if got.WordID != "w2" {
 			t.Errorf("word_id after pick: got %q want w2", got.WordID)
 		}
+		if got.EmojiHint != "🍎🍌" {
+			t.Errorf("emoji_hint after pick: got %q want 🍎🍌", got.EmojiHint)
+		}
 		if got.StartedAt.IsZero() {
 			t.Error("started_at should be set after pick")
+		}
+
+		if err := repo.SetTurnEmojiHint(context.Background(), turn.ID, "🍎🍌🔥"); err != nil {
+			t.Fatal(err)
+		}
+		got, err = repo.GetLatestTurn(context.Background(), "game-id")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got.EmojiHint != "🍎🍌🔥" {
+			t.Errorf("emoji_hint after append: got %q want 🍎🍌🔥", got.EmojiHint)
 		}
 	})
 	t.Run("GetLatestTurn", func(t *testing.T) {

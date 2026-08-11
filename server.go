@@ -6,6 +6,7 @@ import (
 	"emojix/usecase"
 	"errors"
 	"fmt"
+	"html"
 	"io"
 	"log"
 	"net/http"
@@ -46,6 +47,7 @@ func (e *webServer) mux() *http.ServeMux {
 	mux.HandleFunc("POST /game/{id}/message", e.Message)
 	mux.HandleFunc("POST /game/{id}/guess", e.Guess)
 	mux.HandleFunc("POST /game/{id}/pick", e.PickWord)
+	mux.HandleFunc("POST /game/{id}/emoji", e.AddEmoji)
 	mux.HandleFunc("GET /game/{id}/sse", e.Sse)
 	mux.HandleFunc("GET /init", e.InitSession)
 	mux.HandleFunc("GET /", e.Index)
@@ -334,6 +336,24 @@ func (e *webServer) PickWord(w http.ResponseWriter, r *http.Request) {
 	http.Redirect(w, r, fmt.Sprintf("/game/%s", gameID), http.StatusSeeOther)
 }
 
+func (e *webServer) AddEmoji(w http.ResponseWriter, r *http.Request) {
+	session, err := e.getSession(w, r)
+	if err != nil {
+		return
+	}
+	gameID := r.PathValue("id")
+	if err := r.ParseForm(); err != nil {
+		e.handleError(w, err, "failed to parse form")
+		return
+	}
+	emoji := r.PostForm.Get("emoji")
+	if err := e.emojixUsecase.AddEmoji(r.Context(), gameID, session.UserID, emoji); err != nil {
+		e.handleError(w, err, "failed to add emoji")
+		return
+	}
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (e *webServer) Guess(w http.ResponseWriter, r *http.Request) {
 	session, err := e.getSession(w, r)
 	if err != nil {
@@ -485,6 +505,11 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 			err = sendSseMsg(notifType, sseMsg)
 
 			return err
+		}
+
+		// emoji swaps into .emoji-display as HTML; escape untrusted text.
+		if notifType == "emoji" {
+			return sendSseMsg(notifType, html.EscapeString(data))
 		}
 
 		err := sendSseMsg(notifType, data)
