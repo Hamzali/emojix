@@ -420,6 +420,7 @@ var (
 	ErrInvalidOption   = errors.New("word is not one of the turn options")
 	ErrTellerEmojiOnly = errors.New("teller may only send emoji")
 	ErrEmptyMessage    = errors.New("message is empty")
+	ErrPickFirst       = errors.New("pick a word before sending hints")
 )
 
 // tellerMessagePenalty is taken from the teller's current-turn points only
@@ -754,6 +755,9 @@ func (e *emojixUsecase) Message(ctx context.Context, gameID string, userID strin
 	}
 
 	isTeller := turn.TellerID == userID
+	if isTeller && turn.WordID == "" {
+		return ErrPickFirst
+	}
 	if isTeller && !IsEmojiOnly(content) {
 		return ErrTellerEmojiOnly
 	}

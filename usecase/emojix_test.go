@@ -1689,11 +1689,28 @@ func TestMessage(t *testing.T) {
 		}
 	})
 
+	t.Run("teller cannot message before picking a word", func(t *testing.T) {
+		mgr := &repotest.MockGameRepository{
+			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
+				return model.GameTurn{TellerID: userID, ID: turnID, WordID: ""}, nil
+			},
+			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
+				t.Error("SendMessage must not run before pick")
+				return model.Message{}, nil
+			},
+		}
+		uc := usecase.NewEmojixUsecase(murFor("Teller", nil), mgr, nil, nil, &servicetest.MockGameNotifier{}, &servicetest.MockGameLoop{}, service.NewRealClock())
+		err := uc.Message(context.Background(), gameID, userID, "👍")
+		if !errors.Is(err, usecase.ErrPickFirst) {
+			t.Fatalf("err = %v, want ErrPickFirst", err)
+		}
+	})
+
 	t.Run("teller emoji message takes penalty from current-turn points only", func(t *testing.T) {
 		var gotScore int
 		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				return model.GameTurn{TellerID: userID, StartedAt: time.Now().Add(-time.Second), ID: turnID}, nil
+				return model.GameTurn{TellerID: userID, StartedAt: time.Now().Add(-time.Second), ID: turnID, WordID: "w-1"}, nil
 			},
 			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
 				return []model.Score{
@@ -1733,7 +1750,7 @@ func TestMessage(t *testing.T) {
 		var gotScore int
 		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				return model.GameTurn{TellerID: userID, StartedAt: time.Now().Add(-time.Second), ID: turnID}, nil
+				return model.GameTurn{TellerID: userID, StartedAt: time.Now().Add(-time.Second), ID: turnID, WordID: "w-1"}, nil
 			},
 			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
 				return []model.Score{{PlayerID: userID, TurnID: turnID, Score: 1}}, nil
@@ -1758,7 +1775,7 @@ func TestMessage(t *testing.T) {
 	t.Run("teller emoji with zero turn points applies no penalty", func(t *testing.T) {
 		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				return model.GameTurn{TellerID: userID, StartedAt: time.Now().Add(-time.Second), ID: turnID}, nil
+				return model.GameTurn{TellerID: userID, StartedAt: time.Now().Add(-time.Second), ID: turnID, WordID: "w-1"}, nil
 			},
 			GetScoresMock: func(ctx context.Context, id string) ([]model.Score, error) {
 				return []model.Score{{PlayerID: userID, TurnID: "old-turn", Score: 99}}, nil
@@ -1783,7 +1800,7 @@ func TestMessage(t *testing.T) {
 	t.Run("teller text message rejected without send or score", func(t *testing.T) {
 		mgr := &repotest.MockGameRepository{
 			GetLatestTurnMock: func(ctx context.Context, id string) (model.GameTurn, error) {
-				return model.GameTurn{TellerID: userID, StartedAt: time.Now().Add(-time.Second), ID: turnID}, nil
+				return model.GameTurn{TellerID: userID, StartedAt: time.Now().Add(-time.Second), ID: turnID, WordID: "w-1"}, nil
 			},
 			SendMessageMock: func(ctx context.Context, g, turn, u, content string) (model.Message, error) {
 				t.Error("SendMessage must not run for non-emoji teller chat")

@@ -131,7 +131,7 @@
             {{ template "game-msg" . }}
           {{ end }}
         </div>
-        {{ if .IsTeller }}
+        {{ if and .IsTeller (not .AwaitingPick) }}
           <div class="chat-compose">
             {{/* Each key is a submit button: clicked value is the only content posted. No JS. */}}
             <form
@@ -152,6 +152,10 @@
               {{ end }}
             </form>
             <p class="teller-chat-note">Tap an emoji to send a hint</p>
+          </div>
+        {{ else if .IsTeller }}
+          <div class="chat-compose">
+            <p class="teller-chat-note">Pick a word to unlock emoji hints</p>
           </div>
         {{ else }}
           <div class="chat-compose">
