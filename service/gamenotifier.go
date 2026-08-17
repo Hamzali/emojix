@@ -6,7 +6,6 @@ import (
 	"log"
 	"slices"
 	"sync"
-	"time"
 )
 
 type GameNotifier interface {
@@ -43,7 +42,6 @@ type gameSub struct {
 	UserID    string
 	GameID    string
 	NotifChan chan GameNotification
-	LastMsgAt time.Time
 }
 type gameNotifier struct {
 	mu   sync.RWMutex
@@ -83,7 +81,7 @@ func NewGameNotifier() GameNotifier {
 func (gn *gameNotifier) Sub(gameID string, userID string) (chan GameNotification, func()) {
 	ch := make(chan GameNotification)
 	subID := generateRandomID()
-	gs := gameSub{subID, userID, gameID, ch, time.Now()}
+	gs := gameSub{subID, userID, gameID, ch}
 
 	gn.mu.Lock()
 	gn.subs = append(gn.subs, gs)

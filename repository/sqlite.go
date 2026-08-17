@@ -387,14 +387,6 @@ func (r *sqliteGameRepository) SetTurnWord(ctx context.Context, turnID string, w
 	return err
 }
 
-func (r *sqliteGameRepository) SetTurnEmojiHint(ctx context.Context, turnID string, emojiHint string) error {
-	_, err := r.db.ExecContext(ctx,
-		`UPDATE game_turns SET emoji_hint = ? WHERE id = ?`,
-		emojiHint, turnID,
-	)
-	return err
-}
-
 func (r *sqliteGameRepository) CountTurns(ctx context.Context, gameID string) (int, error) {
 	row := r.db.QueryRowContext(ctx, `SELECT COUNT(*) FROM game_turns WHERE game_id = ?`, gameID)
 	var n int

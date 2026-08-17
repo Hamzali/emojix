@@ -645,49 +645,6 @@ func TestGame_NotInGame_RoomFull_500(t *testing.T) {
 	}
 }
 
-// --- LoadingGame -------------------------------------------------------
-
-func TestLoadingGame_Renders(t *testing.T) {
-	uc := newMockUsecase()
-	view := &MockView{}
-	srv := newServer(uc, view)
-
-	r := setGameID(newReq("GET", "/game/g1/loading", nil), "g1")
-	w := httptest.NewRecorder()
-
-	srv.LoadingGame(w, r)
-
-	if w.Code != http.StatusOK {
-		t.Fatalf("status = %d, want 200", w.Code)
-	}
-	if view.renderGameLoadingPageCalls != 1 {
-		t.Fatalf("renderGameLoadingPageCalls = %d, want 1", view.renderGameLoadingPageCalls)
-	}
-	// NOTE: the TODO about owner/belonging check is intentionally untested here (backlog).
-	if got := view.renderGameLoadingPageLastParam; got.GameID != "g1" {
-		t.Errorf("GameID = %q, want g1", got.GameID)
-	}
-}
-
-func TestLoadingGame_RenderError_500(t *testing.T) {
-	uc := newMockUsecase()
-	view := &MockView{}
-	view.renderGameLoadingPageFn = func(io.Writer, GameLoadingPageViewParam) error { return errSentinel }
-	srv := newServer(uc, view)
-
-	r := setGameID(newReq("GET", "/game/g1/loading", nil), "g1")
-	w := httptest.NewRecorder()
-
-	srv.LoadingGame(w, r)
-
-	if w.Code != http.StatusInternalServerError {
-		t.Fatalf("status = %d, want 500", w.Code)
-	}
-	if view.renderErrorPageCalls != 1 {
-		t.Errorf("renderErrorPageCalls = %d, want 1", view.renderErrorPageCalls)
-	}
-}
-
 // --- Message -----------------------------------------------------------
 
 func TestMessage_RendersGameMsgForCurrentUser(t *testing.T) {

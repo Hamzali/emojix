@@ -601,29 +601,3 @@
 .chat-form button {
   white-space: nowrap;
 }
-
-/* ── loading ──────────────────────────────────────────── */
-.loading-page {
-  gap: var(--space-1);
-}
-
-.loading-marks {
-  margin: 0;
-  font-size: 2.25rem;
-  line-height: 1;
-}
-
-.loading-title {
-  margin: 0;
-  font-size: clamp(2rem, 8vw, 3rem);
-}
-
-.countdown {
-  margin: 0;
-  font-family: "Fredoka", system-ui, sans-serif;
-  font-size: clamp(3.5rem, 16vw, 5.5rem);
-  font-weight: 700;
-  line-height: 0.95;
-  color: var(--stroke-black);
-  text-shadow: 4px 4px 0 color-mix(in srgb, var(--color-shadow) 28%, transparent);
-}

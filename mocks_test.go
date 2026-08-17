@@ -286,11 +286,6 @@ type MockView struct {
 	renderGameLeaderboardCalls     int
 	renderGameLeaderboardLastParam GameLeaderboardViewParam
 	renderGameLeaderboardWriter    io.Writer
-
-	renderGameLoadingPageFn        func(wr io.Writer, params GameLoadingPageViewParam) error
-	renderGameLoadingPageCalls     int
-	renderGameLoadingPageLastParam GameLoadingPageViewParam
-	renderGameLoadingPageWriter    io.Writer
 }
 
 func (m *MockView) renderErrorPage(wr io.Writer) error {
@@ -360,18 +355,6 @@ func (m *MockView) renderGameLeaderboard(wr io.Writer, params GameLeaderboardVie
 	m.mu.Unlock()
 	if m.renderGameLeaderboardFn != nil {
 		return m.renderGameLeaderboardFn(wr, params)
-	}
-	return nil
-}
-
-func (m *MockView) renderGameLoadingPage(wr io.Writer, params GameLoadingPageViewParam) error {
-	m.mu.Lock()
-	m.renderGameLoadingPageCalls++
-	m.renderGameLoadingPageLastParam = params
-	m.renderGameLoadingPageWriter = wr
-	m.mu.Unlock()
-	if m.renderGameLoadingPageFn != nil {
-		return m.renderGameLoadingPageFn(wr, params)
 	}
 	return nil
 }

@@ -247,21 +247,7 @@ func TestE2EInitNewGameGuessFlow(t *testing.T) {
 		t.Errorf("game page missing inline next-turn waiting content")
 	}
 
-	// 9. Loading route remains as thin optional fallback.
-	resp = doWithCookies(t, client, "GET", ts.URL+gamePath+"/loading", nil, guesserCookies)
-	body, err = io.ReadAll(resp.Body)
-	resp.Body.Close()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusOK {
-		t.Fatalf("GET loading status = %d, want 200", resp.StatusCode)
-	}
-	if !strings.Contains(string(body), "Next turn") {
-		t.Errorf("loading page missing expected content")
-	}
-
-	// 10. Leaderboard reflects the score.
+	// 9. Leaderboard reflects the score.
 	resp = doWithCookies(t, client, "GET", ts.URL+gamePath+"/leaderboard", nil, guesserCookies)
 	body, err = io.ReadAll(resp.Body)
 	resp.Body.Close()

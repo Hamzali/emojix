@@ -172,13 +172,6 @@ func TestRenderEveryTemplate(t *testing.T) {
 				})
 			},
 		},
-		{
-			name:     "renderGameLoadingPage",
-			contains: "Next turn",
-			render: func(buf *bytes.Buffer) error {
-				return view.renderGameLoadingPage(buf, GameLoadingPageViewParam{GameID: "game-1"})
-			},
-		},
 	}
 
 	for _, c := range cases {

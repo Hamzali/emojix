@@ -46,10 +46,6 @@ type GamePageViewParam struct {
 	EmojiKeyboard     []string
 }
 
-type GameLoadingPageViewParam struct {
-	GameID string
-}
-
 type GameWordViewParam struct {
 	MaskedWord []string
 }
@@ -69,8 +65,6 @@ type View interface {
 	renderGameWord(wr io.Writer, params GameWordViewParam) error
 	renderGameMsg(wr io.Writer, params GameMsgViewParam) error
 	renderGameLeaderboard(wr io.Writer, params GameLeaderboardViewParam) error
-
-	renderGameLoadingPage(wr io.Writer, params GameLoadingPageViewParam) error
 }
 
 type htmlView struct {
@@ -79,7 +73,6 @@ type htmlView struct {
 	gameWordTemplate        template.Template
 	gameMsgTemplate         template.Template
 	gameLeaderboardTemplate template.Template
-	gameLoadingPageTemplate template.Template
 	errorPageTemplate       template.Template
 }
 
@@ -109,11 +102,6 @@ func NewHTMLView() View {
 		"template/game-leaderboard-def.gohtml",
 	))
 
-	gameLoadingPageTemplate := *template.Must(template.ParseFS(templateFS,
-		"template/base.gohtml",
-		"template/game-loading.gohtml",
-	))
-
 	errorPageTemplate := *template.Must(template.ParseFS(templateFS,
 		"template/base.gohtml",
 		"template/error.gohtml",
@@ -125,7 +113,6 @@ func NewHTMLView() View {
 		gameWordTemplate:        gameWordTemplate,
 		gameMsgTemplate:         gameMsgTemplate,
 		gameLeaderboardTemplate: gameLeaderboardTemplate,
-		gameLoadingPageTemplate: gameLoadingPageTemplate,
 		errorPageTemplate:       errorPageTemplate,
 	}
 }
@@ -148,9 +135,6 @@ func (v *htmlView) renderGameMsg(wr io.Writer, params GameMsgViewParam) error {
 
 func (v *htmlView) renderGameWord(wr io.Writer, params GameWordViewParam) error {
 	return v.gameWordTemplate.Execute(wr, params)
-}
-func (v *htmlView) renderGameLoadingPage(wr io.Writer, params GameLoadingPageViewParam) error {
-	return v.gameLoadingPageTemplate.Execute(wr, params)
 }
 
 func (v *htmlView) renderErrorPage(wr io.Writer) error {

@@ -77,8 +77,6 @@
         {{ else }}
           <div
             class="emoji-display"
-            sse-swap="emoji"
-            hx-swap="innerHTML"
             aria-label="Emoji hint"
           >{{ .EmojiHint }}</div>
 
@@ -173,10 +171,7 @@
             </form>
             <p class="teller-chat-note">Tap an emoji to send a hint</p>
           </div>
-        {{ else if .IsTeller }}
-          <div class="chat-compose">
-          </div>
-        {{ else }}
+        {{ else if not .IsTeller }}
           <div class="chat-compose">
             <form
               class="chat-form"

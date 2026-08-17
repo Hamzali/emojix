@@ -6,7 +6,6 @@ import (
 	"emojix/usecase"
 	"errors"
 	"fmt"
-	"html"
 	"io"
 	"log"
 	"net/http"
@@ -40,7 +39,6 @@ func (e *webServer) mux() *http.ServeMux {
 	mux.HandleFunc("POST /game/new", e.NewGame)
 	mux.HandleFunc("GET /game/join", e.JoinGame)
 	mux.HandleFunc("GET /game/{id}/join", e.JoinGame)
-	mux.HandleFunc("GET /game/{id}/loading", e.LoadingGame)
 	mux.HandleFunc("GET /game/{id}", e.Game)
 	mux.HandleFunc("GET /game/{id}/leaderboard", e.Leaderboard)
 	mux.HandleFunc("GET /game/{id}/word", e.GameWord)
@@ -268,19 +266,6 @@ func (e *webServer) Game(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (e *webServer) LoadingGame(w http.ResponseWriter, r *http.Request) {
-	// TODO: check user if it belogs to the game and game state to avoid serving this page to unwanted users
-	// using the session id and game id information.
-	gameID := r.PathValue("id")
-
-	err := e.view.renderGameLoadingPage(w, GameLoadingPageViewParam{GameID: gameID})
-	if err != nil {
-		e.handleError(w, err, "failed to render page")
-		return
-	}
-
-}
-
 func (e *webServer) Message(w http.ResponseWriter, r *http.Request) {
 	session, err := e.getSession(w, r)
 	if err != nil {
@@ -482,11 +467,6 @@ func (e *webServer) Sse(w http.ResponseWriter, r *http.Request) {
 			err = sendSseMsg(notifType, sseMsg)
 
 			return err
-		}
-
-		// emoji swaps into .emoji-display as HTML; escape untrusted text.
-		if notifType == "emoji" {
-			return sendSseMsg(notifType, html.EscapeString(data))
 		}
 
 		err := sendSseMsg(notifType, data)
